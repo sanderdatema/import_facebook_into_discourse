@@ -31,14 +31,14 @@
 #   https://developers.facebook.com/tools/explorer
 #   Select user_groups and read_stream as permission
 # - Add the gem 'koala' to your Gemfile
-# - Edit the Configuration file import_facebook.yml
+# - Edit the Configuration file config/import_facebook.yml
 
 ############################################################
 #### The Rake Task
 ############################################################
 
 desc "Import posts and comments from a Facebook group"
-task "import_facebook" => :environment do
+task "import:facebook_group" => :environment do
   # Import configuration file
   configuration = YAML.load_file('config/import_facebook.yml')
 
