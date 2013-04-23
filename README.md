@@ -18,4 +18,4 @@ Use at your own risk! Please test on a dummy Discourse install first.
 * Place `import_facebook.yml` in the `config` folder
 * Place `import_facebook.rake` in `lib/tasks`
 * In case of multisite: `export RAILS_DB=<your database>`
-* `rake import_facebook'
+* `rake import_facebook`
