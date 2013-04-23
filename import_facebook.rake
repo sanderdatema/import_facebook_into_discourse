@@ -3,7 +3,7 @@
 ####
 #### created by Sander Datema (info@sanderdatema.nl)
 ####
-#### version 1.0 (22/04/2013)
+#### version 1.1 (23/04/2013)
 ############################################################
 
 ############################################################
@@ -21,41 +21,17 @@
 #   username
 # - It will use the first 50 characters of the post as title
 #   for the topic
+# - Will only import the first 25 comments for a topic
 
 ############################################################
 #### Prerequisits
 ############################################################
 #
-# You need to set the following values in the Site Settings:
-# - min_post_length = 1
-# - unique_posts_mins = 0
-# - rate_limit_create_topic = 0
-# - rate_limit_create_post = 0
-# - max_topics_per_day = 10000
-# - allow_duplicate_topic_titles = true
-# - title_min_entropy = 1
-# - body_min_entropy = 1
-# 
-# 
 # - A Facebook Graph API token. get it here:
 #   https://developers.facebook.com/tools/explorer
 #   Select user_groups and read_stream as permission
 # - Add the gem 'koala' to your Gemfile
-# - Edit the Configuration section (up next)
-
-############################################################
-#### Configuration
-############################################################
-#
-# Get this token here: https://developers.facebook.com/tools/explorer
-# Select user_groups and read_stream as permission
-FACEBOOK_TOKEN = 'REPLACE WITH YOUR YOUR TOKEN'
-# The group you want to export posts from. Need to be a member of this group.
-FACEBOOK_GROUP_NAME = 'Facebook Group name here'
-# The category for the topics, will be created if needed
-DISCOURSE_CATEGORY_NAME = 'Name of category here'
-# User with admin privileges to create users and category
-DISCOURSE_ADMIN = 'Username of admin user here'
+# - Edit the Configuration file import_facebook.yml
 
 ############################################################
 #### The Rake Task
@@ -63,31 +39,32 @@ DISCOURSE_ADMIN = 'Username of admin user here'
 
 desc "Import posts and comments from a Facebook group"
 task "import_facebook" => :environment do
+  # Import configuration file
+  configuration = YAML.load_file('config/import_facebook.yml')
 
-  # Initializing some things
-  @first_batch = true # Counts the import batches from Facebook
+  # Backup Site Settings
+  backup_site_settings
+
+  # Then set the temporary Site Settings we need
+  set_temporary_site_settings
+
+  # Initialize batch counter
+  @first_batch = true
 
   # Create and/or set category
-  category = get_category(DISCOURSE_CATEGORY_NAME, DISCOURSE_ADMIN)
+  category = get_category(configuration['discourse_category_name'], configuration['discourse_admin'])
 
   # Setup Facebook connection
-  initialize_facebook_connection(FACEBOOK_TOKEN)
+  initialize_facebook_connection(configuration['facebook_token'])
 
   # Collect IDs
-  group_id = get_group_id(FACEBOOK_GROUP_NAME)
+  group_id = get_group_id(configuration['facebook_group_name'])
 
-  # Collect all posts from Facebook group
-  posts = fetch_all_posts_and_comments(group_id)
+  # Collect all posts from Facebook group and import them into Discourse
+  fetch_and_import_posts_and_comments(group_id, category)
 
-  # Collect all comments per Facebook post and create new
-  # topics with replies in Discourse
-  posts_to_import_count = posts.count.to_s
-  posts_done_count = 0
-  posts.each do |post|
-    create_topic_with_replies(post, category)
-    posts_done_count += 1
-    puts "Imported into Discourse " + posts_done_count.to_s + "/" + posts_to_import_count
-  end
+  # Restore Site Settings
+  restore_site_settings
 
   # DONE!
 end
@@ -108,25 +85,41 @@ end
 # Connect to the Facebook Graph API
 def initialize_facebook_connection(token)
   @graph = Koala::Facebook::API.new(token)
+  puts "Facebook token accepted"
 end
 
 # Returns all posts in the given Facebook group
-def fetch_all_posts_and_comments(group_id)
-  # How many posts in the Facebook group?
-  posts_count = get_posts_count(group_id)
-
-  # Initialize empty Array
-  posts = []
+def fetch_and_import_posts_and_comments(group_id, category)
+  # Initialize post counter
+  post_count = 0
 
   # Fetch all posts
-  puts "Total count of posts in Facebook group: " + posts_count.to_s
   loop do
-    posts = posts.concat(fetch_batch(group_id))
-    break if posts.count >= posts_count
-    puts "Imported into memory from Facebook " + posts.count.to_s + "/" + posts_count.to_s
+    batch = fetch_batch(group_id)
+    batch_count = batch.count
+    break if batch_count == 0
+    puts "----"
+
+    from_date_time = DateTime.parse(batch[-1]['created_time']).to_time.strftime("%d/%m/%Y %H:%M")
+    til_date_time = DateTime.parse(batch[0]['created_time']).to_time.strftime("%d/%m/%Y %H:%M")
+
+    puts batch_count.to_s + " Posts in this batch posted between " + from_date_time + " and " + til_date_time
+  
+    # Collect all comments per Facebook post and create new
+    # topics with replies in Discourse
+    batch.each do |post|
+      create_topic_with_replies(post, category)
+    end
+
+    post_count += batch_count
+
+    puts "Imported into Discourse from Facebook: " + post_count.to_s + " posts"
+    puts "----"
+
   end
 
-  puts "Imported into memory from Facebook " + posts_count.to_s + "/" + posts_count.to_s
+  puts "Imported into memory from Facebook " + post_count.to_s + " posts"
+  puts "Finished importing Facebook posts into memory, now staring import into Discourse"
   return posts
 end
 
@@ -134,18 +127,10 @@ def fetch_batch(group_id)
   if @first_batch then
     @batch = @graph.get_connections(group_id, 'feed')
     @first_batch = false
-    posts = @batch
+    batch = @batch
   else
-    posts = @batch.next_page
+    batch = @batch.next_page
   end
-end
-
-def get_posts_count(group_id)
-  result = @graph.fql_query("SELECT post_id
-                    FROM stream
-                    WHERE source_id = " + group_id + " 
-                      LIMIT 5000")
-  return result.count
 end
 
 # Returns category for imported topics
@@ -153,9 +138,13 @@ def get_category(name, owner)
   if Category.where('name = ?', name).empty? then
     owner = User.where('username = ?', owner).first
     category = Category.create!(name: name, user_id: owner.id)
+    puts "Category '" + name + "' created"
   else
     category = Category.where('name = ?', name).first
+    puts "Category '" + name + "' exists"
   end
+
+  return category
 end
 
 def create_topic_with_replies(facebook_post, category)
@@ -165,11 +154,13 @@ def create_topic_with_replies(facebook_post, category)
   # Create a new topic
   topic = Topic.new
 
-  # Use the converted user ID, cause Facebook ID's are in different format
-  topic.user_id = discourse_user.id
-
-  # Facebook posts don't have a title, so use first x characters of the post as title
+  # Facebook posts don't have a title, so use first 50 characters of the post as title
   topic.title = facebook_post['message'][0,50]
+
+  puts " - Creating topic '" + topic.title + "' through user " + discourse_user.name
+
+  # Set ID of user who created the topic
+  topic.user_id = discourse_user.id
 
   # Set topic category
   topic.category_id = category.id
@@ -181,6 +172,7 @@ def create_topic_with_replies(facebook_post, category)
   # Everything set, save the topic
   if topic.valid? then
     topic.save!
+    puts " - Topic created"
 
     # Create the contents of the topic, using the Facebook post
     discourse_post = Post.new
@@ -194,14 +186,18 @@ def create_topic_with_replies(facebook_post, category)
 
     if discourse_post.valid? then
       discourse_post.save!
+      puts " - First post of topic created"
     else # Skip if not valid for some reason
       puts "Contents of topic from Facebook post " + facebook_post['id'] + " failed to import"
+      puts "Error: " + p(topic.errors)
       puts "Content of message:"
       puts post['message']
     end
 
     # Now create the replies, using the Facebook comments
     if not facebook_post['comments']['data'].empty?
+      comment_count = 1
+      comment_total = facebook_post['comments']['data'].count
       facebook_post['comments']['data'].each do |comment|
         # Create Discourse user if necessary
         discourse_user = create_discourse_user_from_post_or_comment(comment['from'])
@@ -217,34 +213,96 @@ def create_topic_with_replies(facebook_post, category)
 
         if discourse_post.valid? then
           discourse_post.save!
+          puts " - Comment " + comment_count.to_s + "/" + comment_total.to_s + " imported"
         else # Skip if not valid for some reason
           puts "Reply in topic from Facebook post " + facebook_post['id'] + " with comment ID " + comment['id'] + " failed to import"
+          puts "Error: " + p(discourse_post.errors)
           puts "Content of message:"
           puts comment['message']
         end
+        comment_count += 1
       end
     end
   else # In case we missed a validation, don't save
     puts "Topic of Facebook post " + facebook_post['id'] + " failed to import"
+    puts "Error: " + p(discourse_post.errors)
     puts "Content of message:"
     puts post['message']
   end
 end
 
 def create_discourse_user_from_post_or_comment(person)
+  # Fetch person info from Facebook
+  facebook_info = @graph.get_object(person['id'].to_i)
+
   # Create username from full name
-  username = person['name'].tr('^A-Za-z0-9', '')
+  username = facebook_info['username'].tr('^A-Za-z0-9', '').downcase
+
+  # Maximum length of a Discourse username is 15 characters
+  username = username[0,15]
 
   # Create email address for user
-  email = username.downcase + "@example.com"
+  if facebook_info['email'].nil? then
+    email = username + "@localhost"
+  else
+    email = facebook_info['email']
+  end
 
+  # Create user if it doesn't exist
   if User.where('username = ?', username).empty? then
     discourse_user = User.create!(username: username,
-                                  name: person['name'],
+                                  name: facebook_info['name'],
                                   email: email,
                                   approved: true,
                                   approved_by_id: DISCOURSE_ADMIN)
+
+    # Create Facebook credentials so the user could login later and claim his account
+    FacebookUserInfo.create!(user_id: discourse_user.id,
+                             facebook_user_id: facebook_info['id'].to_i,
+                             username: facebook_info['username'],
+                             first_name: facebook_info['first_name'],
+                             last_name: facebook_info['last_name'],
+                             name: facebook_info['name'].tr(' ', '_'),
+                             link: facebook_info['link'])
+    puts " - User " + facebook_info['name'] + " (" + username + " / " + email + ") created"
+
   else
     discourse_user = User.where('username = ?', username).first
-  end  
+  end
+
+  return discourse_user
+end
+
+def backup_site_settings
+  @site_settings = {}
+  @site_settings['min_post_length'] = SiteSetting.min_post_length
+  @site_settings['unique_posts_mins'] = SiteSetting.unique_posts_mins
+  @site_settings['rate_limit_create_topic'] = SiteSetting.rate_limit_create_topic
+  @site_settings['rate_limit_create_post'] = SiteSetting.rate_limit_create_post
+  @site_settings['max_topics_per_day'] = SiteSetting.max_topics_per_day
+  @site_settings['mallow_duplicate_topic_titles'] = SiteSetting.allow_duplicate_topic_titles
+  @site_settings['title_min_entropy'] = SiteSetting.title_min_entropy
+  @site_settings['body_min_entropy'] = SiteSetting.body_min_entropy
+end
+
+def restore_site_settings
+  SiteSetting.min_post_length = @site_settings['min_post_length']
+  SiteSetting.unique_posts_mins = @site_settings['unique_posts_mins']
+  SiteSetting.rate_limit_create_topic = @site_settings['rate_limit_create_topic']
+  SiteSetting.rate_limit_create_post = @site_settings['rate_limit_create_post']
+  SiteSetting.max_topics_per_day = @site_settings['max_topics_per_day']
+  SiteSetting.allow_duplicate_topic_titles = @site_settings['mallow_duplicate_topic_titles']
+  SiteSetting.title_min_entropy = @site_settings['title_min_entropy']
+  SiteSetting.body_min_entropy = @site_settings['body_min_entropy']
+end
+
+def set_temporary_site_settings
+  SiteSetting.min_post_length = 1
+  SiteSetting.unique_posts_mins = 0
+  SiteSetting.rate_limit_create_topic = 0
+  SiteSetting.rate_limit_create_post = 0
+  SiteSetting.max_topics_per_day = 10000
+  SiteSetting.allow_duplicate_topic_titles = true
+  SiteSetting.title_min_entropy = 1
+  SiteSetting.body_min_entropy = 1
 end
