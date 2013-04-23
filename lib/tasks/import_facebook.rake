@@ -58,7 +58,7 @@ task "import:facebook_group" => :environment do
   initialize_facebook_connection(@configuration['facebook_token'])
 
   # Collect IDs
-  group_id = get_group_id(configuration['facebook_group_name'])
+  group_id = get_group_id(@configuration['facebook_group_name'])
 
   # Collect all posts from Facebook group and import them into Discourse
   fetch_and_import_posts_and_comments(group_id, category)
