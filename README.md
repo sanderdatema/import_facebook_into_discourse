@@ -4,7 +4,7 @@ This rake task will import all posts and comments of a Facebook group into Disco
 
 * It will preserve post and comment dates
 * It will not import likes
-* It will create new user accounts for each imported user using username@domain.ext as email address and the full name of each user converted to lower case, no spaces as username
+* It will create new user accounts for each imported user using username@localhost as email address and the full name of each user converted to lower case, no spaces as username
 * It will use the first 50 characters of the post as title for the topic
 * Will only import the first 25 comments for a topic
 
