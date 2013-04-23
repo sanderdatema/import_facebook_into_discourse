@@ -40,7 +40,7 @@
 desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
   # Import configuration file
-  configuration = YAML.load_file('config/import_facebook.yml')
+  @configuration = YAML.load_file('config/import_facebook.yml')
 
   # Backup Site Settings
   backup_site_settings
@@ -52,10 +52,10 @@ task "import:facebook_group" => :environment do
   @first_batch = true
 
   # Create and/or set category
-  category = get_category(configuration['discourse_category_name'], configuration['discourse_admin'])
+  category = get_category(@configuration['discourse_category_name'], @configuration['discourse_admin'])
 
   # Setup Facebook connection
-  initialize_facebook_connection(configuration['facebook_token'])
+  initialize_facebook_connection(@configuration['facebook_token'])
 
   # Collect IDs
   group_id = get_group_id(configuration['facebook_group_name'])
@@ -254,7 +254,7 @@ def create_discourse_user_from_post_or_comment(person)
                                   name: facebook_info['name'],
                                   email: email,
                                   approved: true,
-                                  approved_by_id: DISCOURSE_ADMIN)
+                                  approved_by_id: @configuration['discourse_admin'])
 
     # Create Facebook credentials so the user could login later and claim his account
     FacebookUserInfo.create!(user_id: discourse_user.id,
