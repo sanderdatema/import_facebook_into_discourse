@@ -13,9 +13,16 @@ Use at your own risk! Please test on a dummy Discourse install first.
 # Instructions
 
 * Add `gem 'koala'` to your `Gemfile` and run `bundle install`
-* Get a [Facebook Graph API token](https://developers.facebook.com/tools/explorer)
-* Edit `import_facebook.yml`
-* Place `import_facebook.yml` in the `config` folder
-* Place `import_facebook.rake` in `lib/tasks`
+* Get a [Facebook Graph API token](https://developers.facebook.com/tools/explorer) (select `user_groups` and `read_stream` as permission)
+* Edit `config/import_facebook.yml`
+* Place `config/import_facebook.yml` in your `config` folder
+* Place `lib/tasks/import_facebook.rake` in your `lib/tasks` folder
 * In case of multisite: `export RAILS_DB=<your database>`
-* `rake import_facebook`
+* Run `rake import:facebook_group`
+
+# Todo
+
+* Import likes
+* Refactoring
+* Import new posts/comments after last import
+* Don't send notification mails
