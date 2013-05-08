@@ -14,3 +14,9 @@ discourse_category_name: Some Category Name
 
 # User with admin privileges to create users and category
 discourse_admin: Admin Username
+
+# If true then nothing will be written to the Discourse database
+test_mode: false
+
+# User real email addesses? If not, .fake will be added to the username
+real_email_addresses: false
