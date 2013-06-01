@@ -3,7 +3,7 @@
 ####
 #### created by Sander Datema (info@sanderdatema.nl)
 ####
-#### version 1.5 (09/05/2013)
+#### version 1.6 (15/05/2013)
 ############################################################
 
 ############################################################
@@ -170,53 +170,42 @@ def fb_import_posts_into_dc(dc_category)
   @fb_posts.each do |fb_post|
     post_count += 1
 
-    # Create a new topic
-    dc_topic = Topic.new
-
     # Get details of the writer of this post
     fb_post_user = @fb_writers.find {|k| k['id'] == fb_post['actor_id'].to_s}
 
-    # Get the Discourse user id of this writer
-    dc_user_id = dc_get_user_id(fb_username_to_dc(fb_post_user['username']))
+    # Get the Discourse user of this writer
+    dc_user = dc_get_user(fb_username_to_dc(fb_post_user['username']))
 
     # Facebook posts don't have a title, so use first 50 characters of the post as title
-    dc_topic.title = fb_post['message'][0,50]
+    topic_title = fb_post['message'][0,50]
     # Remove new lines and replace with a space
-    dc_topic.title = dc_topic.title.gsub( /\n/m, " " )
-
-    # Set ID of user who created the topic
-    dc_topic.user_id = dc_user_id
-
-    # Set topic category
-    dc_topic.category_id = dc_category.id
+    topic_title = topic_title.gsub( /\n/m, " " )
 
     # Set topic create and update time
-    dc_topic.created_at = Time.at(fb_post['created_time'])
-    dc_topic.updated_at = dc_topic.created_at
+    #dc_topic.created_at = Time.at(fb_post['created_time'])
+    #dc_topic.updated_at = dc_topic.created_at
 
     progress = post_count.percent_of(@fb_posts.count).round.to_s
-    puts "[#{progress}%]".blue + " Creating topic '" + dc_topic.title.blue + "' (#{dc_topic.created_at})"
+    puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue #+ "' (#{topic_created_at})"
+
+    post_creator = PostCreator.new(dc_user,
+                                   raw: fb_post['message'],
+                                   title: topic_title,
+                                   archetype: 'regular',
+                                   category: DC_CATEGORY_NAME,
+                                   created_at: Time.at(fb_post['created_time']),
+                                   updated_at: Time.at(fb_post['created_time']))
+    post = post_creator.create
+
+    topic_id = post.topic.id
 
     # Everything set, save the topic
-    if dc_topic.valid? then
-      dc_topic.save!
+    unless post_creator.errors.present? then
+      post_serializer = PostSerializer.new(post, scope: true, root: false)
+      post_serializer.topic_slug = post.topic.slug if post.topic.present?
+      post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
 
-      # Create the contents of the topic (the first post), using the Facebook post
-      dc_post = Post.new
-
-      dc_post.user_id = dc_topic.user_id
-      dc_post.topic_id = dc_topic.id
-      dc_post.raw = fb_post['message']
-
-      dc_post.created_at = Time.at(fb_post['created_time'])
-      dc_post.updated_at = dc_post.created_at
-
-      if dc_post.valid? then
-        dc_post.save!
-        puts " - First post of topic created".green
-      else # Skip if not valid for some reason
-        puts "Contents of topic from Facebook post #{fb_post['post_id']} failed to import, #{dc_post.errors.messages[:base]}".red
-      end
+      puts " - First post of topic created".green
 
       # Now create the replies, using the Facebook comments
       unless fb_post['comments']['count'] == 0 then
@@ -224,28 +213,32 @@ def fb_import_posts_into_dc(dc_category)
           # Get details of the writer of this comment
           comment_user = @fb_writers.find {|k| k['id'] == comment['fromid'].to_s}
 
-          # Get the Discourse user id of this writer
-          dc_user_id = dc_get_user_id(fb_username_to_dc(comment_user['username']))
+          # Get the Discourse user of this writer
+          dc_user = dc_get_user(fb_username_to_dc(comment_user['username']))
 
-          dc_post = Post.new
+          post_creator = PostCreator.new(dc_user,
+                                         raw: comment['text'],
+                                         topic_id: topic_id,
+                                         created_at: Time.at(comment['time']),
+                                         updated_at: Time.at(comment['time']))
 
-          dc_post.user_id = dc_user_id
-          dc_post.topic_id = dc_topic.id
-          dc_post.raw = comment['text']
+          post = post_creator.create
 
-          dc_post.created_at = Time.at(comment['time'])
-          dc_post.updated_at = dc_post.created_at
+          # dc_post.created_at = Time.at(comment['time'])
+          # dc_post.updated_at = dc_post.created_at
 
-          if dc_post.valid? then
-            dc_post.save!
+          unless post_creator.errors.present? then
+            post_serializer = PostSerializer.new(post, scope: true, root: false)
+            post_serializer.topic_slug = post.topic.slug if post.topic.present?
+            post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
           else # Skip if not valid for some reason
-            puts " - Comment (#{comment['id']}) failed to import, #{dc_post.errors.messages[:raw][0]}".red
+            puts " - Comment (#{comment['id']}) failed to import, #{post_creator.errors.messages[:raw][0]}".red
           end
         end
-        puts " - #{fb_post['comments']['count'].to_s} Comments imported".green
-      end
-    else # In case we missed a validation, don't save
-      puts "Topic of Facebook post #{fb_post['post_id']} failed to import, #{dc_topic.errors.messages[:base]}".red
+          puts " - #{fb_post['comments']['count'].to_s} Comments imported".green
+        end
+    else # Skip if not valid for some reason
+      puts "Contents of topic from Facebook post #{fb_post['post_id']} failed to import, #{post_creator.errors.messages[:base]}".red
     end
   end
 end
@@ -313,22 +306,22 @@ end
 
 # Restore site settings
 def dc_restore_site_settings
-  SiteSetting.unique_posts_mins = @site_settings['unique_posts_mins']
-  SiteSetting.rate_limit_create_topic = @site_settings['rate_limit_create_topic']
-  SiteSetting.rate_limit_create_post = @site_settings['rate_limit_create_post']
-  SiteSetting.max_topics_per_day = @site_settings['max_topics_per_day']
-  SiteSetting.title_min_entropy = @site_settings['title_min_entropy']
-  SiteSetting.body_min_entropy = @site_settings['body_min_entropy']
+  SiteSetting.send("unique_posts_mins=", @site_settings['unique_posts_mins'])
+  SiteSetting.send("rate_limit_create_topic=", @site_settings['rate_limit_create_topic'])
+  SiteSetting.send("rate_limit_create_post=", @site_settings['rate_limit_create_post'])
+  SiteSetting.send("max_topics_per_day=", @site_settings['max_topics_per_day'])
+  SiteSetting.send("title_min_entropy=", @site_settings['title_min_entropy'])
+  SiteSetting.send("body_min_entropy=", @site_settings['body_min_entropy'])
 end
 
 # Set temporary site settings needed for this rake task
 def dc_set_temporary_site_settings
-  SiteSetting.unique_posts_mins = 0
-  SiteSetting.rate_limit_create_topic = 0
-  SiteSetting.rate_limit_create_post = 0
-  SiteSetting.max_topics_per_day = 10000
-  SiteSetting.title_min_entropy = 1
-  SiteSetting.body_min_entropy = 1
+  SiteSetting.send("unique_posts_mins=", 0)
+  SiteSetting.send("rate_limit_create_topic=", 0)
+  SiteSetting.send("rate_limit_create_post=", 0)
+  SiteSetting.send("max_topics_per_day=", 10000)
+  SiteSetting.send("title_min_entropy=", 1)
+  SiteSetting.send("body_min_entropy=", 1)
 end
 
 # Check if user exists
@@ -340,6 +333,10 @@ end
 
 def dc_get_user_id(name)
   User.where('username = ?', name).first.id
+end
+
+def dc_get_user(name)
+  User.where('username = ?', name).first
 end
 
 # Returns current unix time
