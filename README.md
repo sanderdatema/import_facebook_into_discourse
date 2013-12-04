@@ -22,6 +22,7 @@ Use at your own risk! Please test on a dummy Discourse install first.
 
 # Todo
 
+* Update code to work with latest Discourse methods
 * Import likes
 * Import new posts/comments after last import
 * Don't send notification mails
