@@ -24,6 +24,8 @@ Use at your own risk! Please test on a dummy Discourse install first.
 
 * Import likes
 * Don't send notification mails
+* FB <-> Discourse synchronisation (post written on FB appears on Discourse and vice versa)
+* FB notifications after posting on Discourse
 
 # Changelog
 v. 1.7 (fork from author)
