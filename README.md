@@ -22,7 +22,19 @@ Use at your own risk! Please test on a dummy Discourse install first.
 
 # Todo
 
-* Update code to work with latest Discourse methods
 * Import likes
-* Import new posts/comments after last import
 * Don't send notification mails
+* FB <-> Discourse synchronisation (post written on FB appears on Discourse and vice versa)
+* FB notifications after posting on Discourse
+
+# Changelog
+v. 1.7 (fork from author)
+
+New:
+ - import only posts and messages not imported previously
+
+Fixed:
+ - FB usernames with national chars import
+ - short post/comments import
+ - FB users/posts/comments fetching
+
