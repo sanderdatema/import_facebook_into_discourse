@@ -51,7 +51,6 @@
 ############################################################
  
 require 'koala'
-require 'byebug'
 require 'stringex'
  
 desc "Import posts and comments from a Facebook group"
