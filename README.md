@@ -29,9 +29,11 @@ Use at your own risk! Please test on a dummy Discourse install first.
 
 # Changelog
 v. 1.7 (fork from author)
- New:
+
+New:
  - import only posts and messages not imported previously
- Fixed:
+
+Fixed:
  - FB usernames with national chars import
  - short post/comments import
  - FB users/posts/comments fetching

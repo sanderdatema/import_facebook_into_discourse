@@ -4,13 +4,13 @@
 
 # Get this token here: https://developers.facebook.com/tools/explorer
 # Select user_groups and read_stream as permission
-facebook_token: CAACEdEose0cBAPhoRRNr2n2ZCppT1HJPlB4HiTQaAdyaTMLF47pEmlFWdXIrUGgGkLlEukkmGPaDMLWAm8N4krS00IJ6e9XtaPdwZBLV54ZC1ZAIbaX6ZBcM2A37HbbX59xoOpECajyNPA1BGwMUn7dlO67ReygE0RAZBUCHQwso388X2UrZCkesDDej9gYC58WTJuopjOzj3lmhEOZBtLuMeLcoJ6fcVRsZD
+facebook_token: FACEBOOK_TOKEN
 
 # The group ID you want to export posts from. Need to be a member of this group.
-facebook_group_id: 1443681709189839
+facebook_group_id: FACEBOOK_GROUP_ID
 
 # The category for the topics, will be created if needed
-discourse_category_name: Osiedle
+discourse_category_name: Category
 
 # User with admin privileges to create users and category
 discourse_admin: admin
