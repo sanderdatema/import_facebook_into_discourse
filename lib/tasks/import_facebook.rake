@@ -2,8 +2,9 @@
 #### IMPORT FACEBOOK GROUP INTO DISCOURSE
 ####
 #### created by Sander Datema (info@sanderdatema.nl)
+####   changed by Vannilla Sky (vannillasky@tlen.pl
 ####
-#### version 1.6.1 (11/07/2013)
+#### version 1.7 (06/02/2015)
 ############################################################
  
 ############################################################
@@ -34,40 +35,56 @@
 # - Edit the configuration file config/import_facebook.yml
  
 ############################################################
+#### Changelog
+############################################################
+#
+# v. 1.7 (fork from author)
+# New:
+# - importing only post and messages not imported previously
+# Fixed:
+# - FB usernames with national chars import
+# - short post/comments import
+# - FB users/posts/comments fetching
+#
+############################################################
 #### The Rake Task
 ############################################################
  
 require 'koala'
+require 'byebug'
+require 'stringex'
  
 desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
-  # Import configuration file
-  @config = YAML.load_file('config/import_facebook.yml')
-  TEST_MODE = @config['test_mode']
-  FB_TOKEN = @config['facebook_token']
-  FB_GROUP_NAME = @config['facebook_group_name']
-  DC_CATEGORY_NAME = @config['discourse_category_name']
-  DC_ADMIN = @config['discourse_admin']
-  REAL_EMAIL = @config['real_email_addresses']
+   # Import configuration file
+   @config = YAML.load_file('config/import_facebook.yml')
+   TEST_MODE = @config['test_mode']
+   FB_TOKEN = @config['facebook_token']
+   FB_GROUP_NAME = @config['facebook_group_name']
+   DC_CATEGORY_NAME = @config['discourse_category_name']
+   DC_ADMIN = @config['discourse_admin']
+   REAL_EMAIL = @config['real_email_addresses']
+   GROUP_ID = @config['facebook_group_id'] 
+   if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
+   unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
  
-  if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
-  unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
+   # Some checks
+   # Exit rake task if admin user doesn't exist
+   unless dc_user_exists(DC_ADMIN) then
+      puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
+      exit_script
+   end
+   
+   # Setup Facebook connection
+   fb_initialize_connection(FB_TOKEN)
+   
+   # Collect IDs
+   # group_id = fb_get_group_id(FB_GROUP_NAME)
  
-  # Some checks
-  # Exit rake task if admin user doesn't exist
-  unless dc_user_exists(DC_ADMIN) then
-    puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
-    exit_script
-  end
- 
-  # Setup Facebook connection
-  fb_initialize_connection(FB_TOKEN)
- 
-  # Collect IDs
-  group_id = fb_get_group_id(FB_GROUP_NAME)
- 
+  @fb_posts ||= [] # Initialize if needed
+
   # Fetch all facebook posts
-  fb_fetch_posts(group_id, current_unix_time)
+  fb_fetch_posts(GROUP_ID, current_unix_time)
  
   if TEST_MODE then
     exit_script # We're done
@@ -100,14 +117,6 @@ end
 #### Methods
 ############################################################
  
-# Returns the Facebook Group ID of the given group name
-# User must be a member of given group
-def fb_get_group_id(groupname)
-  groups = @graph.get_connections("me", "groups")
-  groups = groups.select {|g| g['name'] == groupname}
-  groups[0]['id']
-end
- 
 # Connect to the Facebook Graph API
 def fb_initialize_connection(token)
   begin
@@ -122,43 +131,23 @@ def fb_initialize_connection(token)
 end
  
 def fb_fetch_posts(group_id, until_time)
-  @fb_posts ||= [] # Initialize if needed
- 
-  time_of_last_imported_post = until_time
  
   # Fetch Facebook posts in batches and download writer/user info
-  loop do
-    query = "SELECT created_time,
-                    updated_time,
-                    post_id,
-                    actor_id,
-                    permalink,
-                    message,
-                    comments
-             FROM stream
-             WHERE source_id = '#{group_id}'
-               AND created_time < #{time_of_last_imported_post}
-             LIMIT 500"
-    result = @graph.fql_query(query)
+   @fb_posts = []
+   page = @graph.get_connections(group_id,'feed')
+   begin
+   @fb_posts += page
+   end while page = page.next_page
  
-    break if result.count == 0 # No more posts to import
- 
-    # Add the results of this batch to the rest of the imported posts
-    @fb_posts = @fb_posts.concat(result)
- 
-    puts "Batch: #{result.count.to_s} posts (since #{unix_to_human_time(result[-1]['created_time'])} until #{unix_to_human_time(result[0]['created_time'])})"
-    time_of_last_imported_post = result[-1]['created_time']
- 
-    result.each do |post|
+    @fb_posts.each do |post|
       fb_extract_writer(post) # Extract the writer from the post
-      comments = post['comments']['comment_list']
-      if comments.count > 0 then
+      if not post['comments'].nil? then
+        comments = post['comments']['data']
         comments.each do |comment|
           fb_extract_writer(comment)
         end
       end
     end
-  end
  
   puts "\nAmount of posts: #{@fb_posts.count.to_s}"
   puts "Amount of writers: #{@fb_writers.count.to_s}"
@@ -166,75 +155,89 @@ end
  
 # Import Facebook posts into Discourse
 def fb_import_posts_into_dc(dc_category)
-  post_count = 0
-  @fb_posts.each do |fb_post|
-    post_count += 1
- 
-    # Get details of the writer of this post
-    fb_post_user = @fb_writers.find {|k| k['id'] == fb_post['actor_id'].to_s}
- 
-    # Get the Discourse user of this writer
-    dc_user = dc_get_user(fb_username_to_dc(fb_post_user['username']))
- 
-    # Facebook posts don't have a title, so use first 50 characters of the post as title
-    topic_title = fb_post['message'][0,50]
-    # Remove new lines and replace with a space
-    topic_title = topic_title.gsub( /\n/m, " " )
- 
-    progress = post_count.percent_of(@fb_posts.count).round.to_s
-    puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + "' (#{Time.at(fb_post['created_time'])})"
- 
-    post_creator = PostCreator.new(dc_user,
+   post_count = 0
+   @fb_posts.each do |fb_post|
+
+      if PostCustomField.where(name: 'fb_id', value:  fb_post['id']).count == 0 then
+         post_count += 1
+    
+         # Get details of the writer of this post
+         fb_post_user = @fb_writers.find {|k| k['id'] == fb_post['from']['id'].to_s}
+         
+         # Get the Discourse user of this writer
+         dc_user = dc_get_user(fb_username_to_dc(fb_post_user['name']))
+       
+         # Facebook posts don't have a title, so use first 50 characters of the post as title
+         if fb_post['message'].nil? then
+               fb_post['message'] = 'EMPTY'
+         end
+         topic_title = fb_post['message'][0,50]
+         # Remove new lines and replace with a space
+         topic_title = topic_title.gsub( /\n/m, " " )
+      
+         progress = post_count.percent_of(@fb_posts.count).round.to_s
+    
+         puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + " #{Time.at(Time.parse(DateTime.iso8601(fb_post['created_time']).to_s))}"
+      
+         post_creator = PostCreator.new(dc_user,
                                    raw: fb_post['message'],
                                    title: topic_title,
                                    archetype: 'regular',
                                    category: DC_CATEGORY_NAME,
-                                   created_at: Time.at(fb_post['created_time']))
-    p Time.at(fb_post['created_time'])
-    p fb_post['created_time']
-    Time.now - 1.week
-    Time.at(Time.now - 1.week)
-    post = post_creator.create
- 
-    # Everything set, save the topic
-    unless post_creator.errors.present? then
-      topic_id = post.topic.id
-      post_serializer = PostSerializer.new(post, scope: true, root: false)
-      post_serializer.topic_slug = post.topic.slug if post.topic.present?
-      post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
- 
-      puts " - First post of topic created".green
- 
-      # Now create the replies, using the Facebook comments
-      unless fb_post['comments']['count'] == 0 then
-        fb_post['comments']['comment_list'].each do |comment|
-          # Get details of the writer of this comment
-          comment_user = @fb_writers.find {|k| k['id'] == comment['fromid'].to_s}
- 
-          # Get the Discourse user of this writer
-          dc_user = dc_get_user(fb_username_to_dc(comment_user['username']))
- 
-          post_creator = PostCreator.new(dc_user,
-                                         raw: comment['text'],
-                                         topic_id: topic_id,
-                                         created_at: Time.at(comment['time']))
- 
-          post = post_creator.create
- 
-          unless post_creator.errors.present? then
+                                   created_at: Time.at(Time.parse(DateTime.iso8601(fb_post['created_time']).to_s)))
+         post = post_creator.create
+   
+         # Everything set, save the topic
+         unless post_creator.errors.present? then
+            topic_id = post.topic.id
+            post.custom_fields['fb_id'] = fb_post['id']
+            post.save
             post_serializer = PostSerializer.new(post, scope: true, root: false)
-            post_serializer.topic_slug = post.topic.slug if post.topic.present?
+
+	    # NEXT LINE IS DISABLED - don't know what is it and what for, but it crashing process
+            # post_serializer.topic_slug = post.topic.slug if post.topic.present?
+	    
             post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
-          else # Skip if not valid for some reason
-            puts " - Comment (#{comment['id']}) failed to import, #{post_creator.errors.messages[:raw][0]}".red
-          end
-        end
-          puts " - #{fb_post['comments']['count'].to_s} Comments imported".green
-        end
-    else # Skip if not valid for some reason
-      puts "Contents of topic from Facebook post #{fb_post['post_id']} failed to import, #{post_creator.errors.messages[:base]}".red
-    end
-  end
+   
+         end
+      end
+      # Now create the replies, using the Facebook comments
+      unless fb_post['comments'].nil? then
+         fb_post['comments']['data'].each do |comment|
+   
+            if PostCustomField.where(name: 'fb_id', value:  comment['id']).count == 0 then
+               # Get details of the writer of this comment
+               comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s}
+ 
+               # Get the Discourse user of this writer
+               dc_user = dc_get_user(fb_username_to_dc(comment_user['name']))
+               if comment['message'].nil? then
+                   comment['message'] = 'EMPTY'
+               end
+
+               post_creator = PostCreator.new(dc_user,
+                                          raw: comment['message'],
+                                          category: DC_CATEGORY_NAME,
+                                          topic_id: topic_id,
+                                          created_at: Time.at(Time.parse(DateTime.iso8601(comment['created_time']).to_s)))
+ 
+               post = post_creator.create
+   
+               unless post_creator.errors.present? then
+                  post.custom_fields['fb_id'] = comment['id']
+                  post.save
+                  post_serializer = PostSerializer.new(post, scope: true, root: false)
+
+	    	  # NEXT LINE IS DISABLED - don't know what is it and what for, but it crashing process
+                  #post_serializer.topic_slug = post.topic.slug if post.topic.present?
+                  
+		  post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
+               end
+            end
+         end
+      end
+   end
+   puts " - #{post_count.to_s} Posts imported".green
 end
  
 # Returns the Discourse category where imported Facebook posts will go
@@ -253,7 +256,7 @@ end
 def dc_create_users_from_fb_writers
   @fb_writers.each do |fb_writer|
     # Setup Discourse username
-    dc_username = fb_username_to_dc(fb_writer['username'])
+    dc_username = fb_username_to_dc(fb_writer['name'])
  
     # Create email address for user
     if fb_writer['email'].nil? then
@@ -273,16 +276,16 @@ def dc_create_users_from_fb_writers
                              email: dc_email,
                              approved: true,
                              approved_by_id: dc_get_user_id(DC_ADMIN))
- 
+   dc_user.activate; 
       # Create Facebook credentials so the user could login later and claim his account
       FacebookUserInfo.create!(user_id: dc_user.id,
                                facebook_user_id: fb_writer['id'].to_i,
-                               username: fb_writer['username'],
+                               username: fb_writer['name'],
                                first_name: fb_writer['first_name'],
                                last_name: fb_writer['last_name'],
                                name: fb_writer['name'].tr(' ', '_'),
                                link: fb_writer['link'])
-      puts "User #{fb_writer['name']} (#{dc_username} / #{dc_email}) created".green
+      # puts "User #{fb_writer['name']} (#{dc_username} / #{dc_email}) created".green
     end
   end
 end
@@ -296,6 +299,27 @@ def dc_backup_site_settings
   @site_settings['max_topics_per_day'] = SiteSetting.max_topics_per_day
   @site_settings['title_min_entropy'] = SiteSetting.title_min_entropy
   @site_settings['body_min_entropy'] = SiteSetting.body_min_entropy
+  @site_settings['min_post_length'] = SiteSetting.min_post_length
+  @site_settings['min_topic_title_length'] = SiteSetting.min_topic_title_length
+  @site_settings['title_prettify'] = SiteSetting.title_prettify
+  @site_settings['allow_duplicate_topic_titles'] = SiteSetting.allow_duplicate_topic_titles
+  @site_settings['min_title_similar_length'] = SiteSetting.min_title_similar_length
+  @site_settings['min_body_similar_length'] = SiteSetting.min_body_similar_length
+  @site_settings['max_reply_history'] = SiteSetting.max_reply_history
+  @site_settings['newuser_max_replies_per_topic'] = SiteSetting.newuser_max_replies_per_topic
+  @site_settings['max_word_length'] = SiteSetting.max_word_length
+  @site_settings['newuser_max_links'] = SiteSetting.newuser_max_links
+  @site_settings['flag_sockpuppets'] = SiteSetting.flag_sockpuppets
+  @site_settings['newuser_spam_host_threshold'] = SiteSetting.newuser_spam_host_threshold
+  @site_settings['max_new_accounts_per_registration_ip'] = SiteSetting.max_new_accounts_per_registration_ip
+  @site_settings['max_age_unmatched_ips'] = SiteSetting.max_age_unmatched_ips
+  @site_settings['rate_limit_new_user_create_topic'] = SiteSetting.rate_limit_new_user_create_topic
+  @site_settings['rate_limit_new_user_create_post'] = SiteSetting.rate_limit_new_user_create_post
+  @site_settings['max_topics_in_first_day'] = SiteSetting.max_topics_in_first_day
+  @site_settings['max_replies_in_first_day'] = SiteSetting.max_replies_in_first_day
+  @site_settings['sequential_replies_threshold'] = SiteSetting.sequential_replies_threshold
+  @site_settings['dominating_topic_minimum_percent'] = SiteSetting.dominating_topic_minimum_percent
+  @site_settings['disable_emails'] = SiteSetting.disable_emails
 end
  
 # Restore site settings
@@ -306,6 +330,27 @@ def dc_restore_site_settings
   SiteSetting.send("max_topics_per_day=", @site_settings['max_topics_per_day'])
   SiteSetting.send("title_min_entropy=", @site_settings['title_min_entropy'])
   SiteSetting.send("body_min_entropy=", @site_settings['body_min_entropy'])
+  SiteSetting.send("min_post_length=", @site_settings['min_post_length'])
+  SiteSetting.send("min_topic_title_length=", @site_settings['min_topic_title_length'])
+  SiteSetting.send("title_prettify=", @site_settings['title_prettify'])
+  SiteSetting.send("allow_duplicate_topic_titles=", @site_settings['allow_duplicate_topic_titles'])
+  SiteSetting.send("min_title_similar_length=", @site_settings['min_title_similar_length'])
+  SiteSetting.send("min_body_similar_length=", @site_settings['min_body_similar_length'])
+  SiteSetting.send("max_reply_history=", @site_settings['max_reply_history'])
+  SiteSetting.send("newuser_max_replies_per_topic=", @site_settings['newuser_max_replies_per_topic'])
+  SiteSetting.send("max_word_length=", @site_settings['max_word_length'])
+  SiteSetting.send("newuser_max_links=", @site_settings['newuser_max_links'])
+  SiteSetting.send("flag_sockpuppets=", @site_settings['flag_sockpuppets'])
+  SiteSetting.send("newuser_spam_host_threshold=", @site_settings['newuser_spam_host_threshold'])
+  SiteSetting.send("max_new_accounts_per_registration_ip=", @site_settings['max_new_accounts_per_registration_ip'])
+  SiteSetting.send("max_age_unmatched_ips=", @site_settings['max_age_unmatched_ips'])
+  SiteSetting.send("rate_limit_new_user_create_topic=", @site_settings['rate_limit_new_user_create_topic'])
+  SiteSetting.send("rate_limit_new_user_create_post=", @site_settings['rate_limit_new_user_create_post'])
+  SiteSetting.send("max_topics_in_first_day=", @site_settings['max_topics_in_first_day'])
+  SiteSetting.send("max_replies_in_first_day=", @site_settings['max_replies_in_first_day'])
+  SiteSetting.send("sequential_replies_threshold=", @site_settings['sequential_replies_threshold'])
+  SiteSetting.send("dominating_topic_minimum_percent=", @site_settings['dominating_topic_minimum_percent'])
+  SiteSetting.send("disable_emails=", @site_settings['disable_emails'])
 end
  
 # Set temporary site settings needed for this rake task
@@ -316,6 +361,27 @@ def dc_set_temporary_site_settings
   SiteSetting.send("max_topics_per_day=", 10000)
   SiteSetting.send("title_min_entropy=", 1)
   SiteSetting.send("body_min_entropy=", 1)
+  SiteSetting.send("min_post_length=", 2)
+  SiteSetting.send("min_topic_title_length=", 3)
+  SiteSetting.send("title_prettify=", false)
+  SiteSetting.send("allow_duplicate_topic_titles=", true)
+  SiteSetting.send("min_title_similar_length=", 50)
+  SiteSetting.send("min_body_similar_length=", 90)
+  SiteSetting.send("max_reply_history=", 999)
+  SiteSetting.send("newuser_max_replies_per_topic=", 999)
+  SiteSetting.send("max_word_length=", 300)
+  SiteSetting.send("newuser_max_links=", 200)
+  SiteSetting.send("flag_sockpuppets=", false)
+  SiteSetting.send("newuser_spam_host_threshold=", 999)
+  SiteSetting.send("max_new_accounts_per_registration_ip=", 999)
+  SiteSetting.send("max_age_unmatched_ips=", 1)
+  SiteSetting.send("rate_limit_new_user_create_topic=", 0)
+  SiteSetting.send("rate_limit_new_user_create_post=", 0)
+  SiteSetting.send("max_topics_in_first_day=", 999)
+  SiteSetting.send("max_replies_in_first_day=", 999)
+  SiteSetting.send("sequential_replies_threshold=", 999)
+  SiteSetting.send("dominating_topic_minimum_percent=", 99)
+  SiteSetting.send("disable_emails=", true)
 end
  
 # Check if user exists
@@ -351,12 +417,7 @@ end
 def fb_extract_writer(post)
   @fb_writers ||= [] # Initialize if needed
  
-  if post.has_key? 'actor_id' # Facebook post
-    writer = post['actor_id']
-  else # Facebook comment
-    writer = post['fromid']
-  end
- 
+  writer = post['from']['id'] 
   # Fetch user info from Facebook and add to writers array
   unless @fb_writers.any? {|w| w['id'] == writer.to_s}
     @fb_writers << @graph.get_object(writer)
@@ -365,10 +426,12 @@ end
  
 def fb_username_to_dc(name)
   # Create username from full name, only letters and numbers
-  username = name.tr('^A-Za-z0-9', '').downcase
+  username = name.to_ascii.downcase.tr('^A-Za-z0-9', '')
  
   # Maximum length of a Discourse username is 15 characters
   username = username[0,15]
+
+  return username
 end
  
 # Add colors to class String
