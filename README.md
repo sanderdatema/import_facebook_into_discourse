@@ -6,7 +6,7 @@ This rake task will import all posts and comments of a Facebook group into Disco
 * It will not import likes
 * It will create new user accounts for each imported user using username@localhost as email address and the full name of each user converted to lower case, no spaces as username
 * It will use the first 50 characters of the post as title for the topic
-* It has a test mode. When enables no changes to the Discourse database will be made
+* It has a test mode. When enabled, no changes to the Discourse database will be made.
 
 Use at your own risk! Please test on a dummy Discourse install first.
 
@@ -37,4 +37,3 @@ Fixed:
  - FB usernames with national chars import
  - short post/comments import
  - FB users/posts/comments fetching
-
