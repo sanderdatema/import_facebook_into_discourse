@@ -18,5 +18,5 @@ discourse_admin: admin
 # If true then nothing will be written to the Discourse database
 test_mode: false
 
-# User real email addesses? If not, .fake will be added to the username
+# User real email addresses? If not, .fake will be added to the username
 real_email_addresses: false
