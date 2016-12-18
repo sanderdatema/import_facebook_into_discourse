@@ -246,7 +246,13 @@ def fb_import_posts_into_dc(dc_category)
       end
       # Now create the replies, using the Facebook comments
       unless fb_post['comments'].nil? then
-         fb_post['comments']['data'].each do |comment|
+        comments = []
+        page = @graph.get_connections(fb_post["id"], "comments")
+        begin
+        comments += page
+        end while page = page.next_page
+
+        comments.each do |comment|
    
             if PostCustomField.where(name: 'fb_id', value:  comment['id']).count == 0 then
               comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s rescue nil}
