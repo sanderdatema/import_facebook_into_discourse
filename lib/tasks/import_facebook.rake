@@ -217,15 +217,17 @@ def fb_import_posts_into_dc(dc_category)
           end
 
          progress = post_count.percent_of(@fb_posts.count).round.to_s
+
+         fb_post_time = fb_post['created_time'] || fb_post['updated_time']
     
-         puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + " #{Time.at(Time.parse(DateTime.iso8601(fb_post['created_time']).to_s))}"
+         puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + " #{Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s))}"
       
          post_creator = PostCreator.new(dc_user,
                                    raw: fb_post['message'],
                                    title: topic_title,
                                    archetype: 'regular',
                                    category: DC_CATEGORY_NAME,
-                                   created_at: Time.at(Time.parse(DateTime.iso8601(fb_post['created_time']).to_s)))
+                                   created_at: Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s)))
          post = post_creator.create
    
          # Everything set, save the topic
@@ -258,11 +260,13 @@ def fb_import_posts_into_dc(dc_category)
                    comment['message'] = 'EMPTY'
                end
 
+               comment_time = comment['created_time'] || comment['updated_time']
+
                post_creator = PostCreator.new(dc_user,
                                           raw: comment['message'],
                                           category: DC_CATEGORY_NAME,
                                           topic_id: topic_id,
-                                          created_at: Time.at(Time.parse(DateTime.iso8601(comment['created_time']).to_s)))
+                                          created_at: Time.at(Time.parse(DateTime.iso8601(comment_time).to_s)))
  
                post = post_creator.create
    
