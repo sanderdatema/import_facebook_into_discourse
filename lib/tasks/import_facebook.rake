@@ -360,7 +360,7 @@ def dc_backup_site_settings
   @site_settings['min_body_similar_length'] = SiteSetting.min_body_similar_length
   @site_settings['max_reply_history'] = SiteSetting.max_reply_history
   @site_settings['newuser_max_replies_per_topic'] = SiteSetting.newuser_max_replies_per_topic
-  @site_settings['max_word_length'] = SiteSetting.max_word_length
+  @site_settings['title_max_word_length'] = SiteSetting.title_max_word_length
   @site_settings['newuser_max_links'] = SiteSetting.newuser_max_links
   @site_settings['flag_sockpuppets'] = SiteSetting.flag_sockpuppets
   @site_settings['newuser_spam_host_threshold'] = SiteSetting.newuser_spam_host_threshold
@@ -391,7 +391,7 @@ def dc_restore_site_settings
   SiteSetting.send("min_body_similar_length=", @site_settings['min_body_similar_length'])
   SiteSetting.send("max_reply_history=", @site_settings['max_reply_history'])
   SiteSetting.send("newuser_max_replies_per_topic=", @site_settings['newuser_max_replies_per_topic'])
-  SiteSetting.send("max_word_length=", @site_settings['max_word_length'])
+  SiteSetting.send("title_max_word_length=", @site_settings['title_max_word_length'])
   SiteSetting.send("newuser_max_links=", @site_settings['newuser_max_links'])
   SiteSetting.send("flag_sockpuppets=", @site_settings['flag_sockpuppets'])
   SiteSetting.send("newuser_spam_host_threshold=", @site_settings['newuser_spam_host_threshold'])
@@ -422,7 +422,7 @@ def dc_set_temporary_site_settings
   SiteSetting.send("min_body_similar_length=", 90)
   SiteSetting.send("max_reply_history=", 999)
   SiteSetting.send("newuser_max_replies_per_topic=", 999)
-  SiteSetting.send("max_word_length=", 300)
+  SiteSetting.send("title_max_word_length=", 300)
   SiteSetting.send("newuser_max_links=", 200)
   SiteSetting.send("flag_sockpuppets=", false)
   SiteSetting.send("newuser_spam_host_threshold=", 999)
