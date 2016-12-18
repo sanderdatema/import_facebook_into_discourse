@@ -253,46 +253,75 @@ def fb_import_posts_into_dc(dc_category)
         end while page = page.next_page
 
         comments.each do |comment|
-   
-            if PostCustomField.where(name: 'fb_id', value:  comment['id']).count == 0 then
-              comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s rescue nil}
-              unless comment_user
-                comment_user = { "id" => "1", "name" => "Unknown" }
-              end
- 
-               # Get the Discourse user of this writer
-               dc_user = dc_get_user(fb_username_to_dc(comment_user['name']))
-               if comment['message'].nil? then
-                   comment['message'] = 'EMPTY'
-               end
-
-               comment_time = comment['created_time'] || comment['updated_time']
-
-               post_creator = PostCreator.new(dc_user,
-                                          raw: comment['message'],
-                                          category: DC_CATEGORY_NAME,
-                                          topic_id: topic_id,
-                                          created_at: Time.at(Time.parse(DateTime.iso8601(comment_time).to_s)))
- 
-               post = post_creator.create
-   
-               unless post_creator.errors.present? then
-                  post.custom_fields['fb_id'] = comment['id']
-                  post.save
-                  post_serializer = PostSerializer.new(post, scope: true, root: false)
-
-	    	  # NEXT LINE IS DISABLED - don't know what is it and what for, but it crashing process
-                  #post_serializer.topic_slug = post.topic.slug if post.topic.present?
-                  
-		  post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
-               end
-            end
-         end
+          dc_create_comment(comment, topic_id)
+        end
       end
    end
    puts " - #{post_count.to_s} Posts imported".green
 end
- 
+
+def dc_create_comment(comment, topic_id, post_number=nil)
+  if PostCustomField.where(name: 'fb_id', value:  comment['id']).count == 0 then
+    comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s rescue nil}
+    unless comment_user
+      comment_user = { "id" => "1", "name" => "Unknown" }
+    end
+
+    dc_user = dc_get_user(fb_username_to_dc(comment_user['name'])) rescue nil
+    unless dc_user
+      puts "Unable to get Discourse user object for this comment:"
+      puts comment.inspect
+      exit
+    end
+
+    if comment['message'].nil? then
+      comment['message'] = 'EMPTY'
+    end
+
+    comment_time = comment['created_time'] || comment['updated_time']
+
+    puts "Creating comment by #{dc_user.name}: #{comment['message']}"
+
+    # Differentiate between comments and subcomments
+    if post_number
+      post_creator = PostCreator.new(
+        dc_user,
+        raw: comment['message'],
+        category: DC_CATEGORY_NAME,
+        topic_id: topic_id,
+        reply_to_post_number: post_number,
+        created_at: Time.at(Time.parse(DateTime.iso8601(comment_time).to_s)))
+    else
+      post_creator = PostCreator.new(
+        dc_user,
+        raw: comment['message'],
+        category: DC_CATEGORY_NAME,
+        topic_id: topic_id,
+        created_at: Time.at(Time.parse(DateTime.iso8601(comment_time).to_s)))
+    end
+
+    post = post_creator.create
+
+    unless post_creator.errors.present? then
+      post.custom_fields['fb_id'] = comment['id']
+      post.save
+      post_serializer = PostSerializer.new(post, scope: true, root: false)
+
+      post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
+
+      subcomments = []
+      page = @graph.get_connections(comment["id"], "comments")
+      begin
+      subcomments += page
+      end while page = page.next_page
+
+      subcomments.each do |subcomment|
+        dc_create_comment(subcomment, topic_id, post.post_number)
+      end
+    end
+  end
+end
+
 # Returns the Discourse category where imported Facebook posts will go
 def dc_get_or_create_category(name, owner)
   if Category.where('name = ?', name).empty? then
