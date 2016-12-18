@@ -161,7 +161,10 @@ def fb_import_posts_into_dc(dc_category)
          post_count += 1
     
          # Get details of the writer of this post
-         fb_post_user = @fb_writers.find {|k| k['id'] == fb_post['from']['id'].to_s}
+         fb_post_user = @fb_writers.find {|k| k['id'] == fb_post['from']['id'].to_s rescue nil}
+         unless fb_post_user
+           fb_post_user = { "name" => "Unknown" }
+         end
          
          # Get the Discourse user of this writer
          dc_user = dc_get_user(fb_username_to_dc(fb_post_user['name']))
@@ -205,8 +208,10 @@ def fb_import_posts_into_dc(dc_category)
          fb_post['comments']['data'].each do |comment|
    
             if PostCustomField.where(name: 'fb_id', value:  comment['id']).count == 0 then
-               # Get details of the writer of this comment
-               comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s}
+              comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s rescue nil}
+              unless comment_user
+                comment_user = { "id" => "1", "name" => "Unknown" }
+              end
  
                # Get the Discourse user of this writer
                dc_user = dc_get_user(fb_username_to_dc(comment_user['name']))
@@ -416,10 +421,24 @@ end
 def fb_extract_writer(post)
   @fb_writers ||= [] # Initialize if needed
  
+  if post['from'].nil?
+    return nil
+  end
+
   writer = post['from']['id'] 
   # Fetch user info from Facebook and add to writers array
   unless @fb_writers.any? {|w| w['id'] == writer.to_s}
-    @fb_writers << @graph.get_object(writer)
+    writer_object = @graph.get_object(writer) rescue nil
+
+    if writer_object
+      @fb_writers << writer_object
+    else
+      puts "Writer UNKNOWN! #{post['from'].inspect}"
+      @fb_writers << {
+        "id" => "1",
+        "name" => "Unknown"
+      }
+    end
   end
 end
  
