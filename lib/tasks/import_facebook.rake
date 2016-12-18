@@ -171,7 +171,11 @@ def fb_import_posts_into_dc(dc_category)
        
          # Facebook posts don't have a title, so use first 50 characters of the post as title
          if fb_post['message'].nil? then
-               fb_post['message'] = 'EMPTY'
+            if fb_post['story'].nil? then
+              fb_post['message'] = 'EMPTY'
+            else
+              fb_post['message'] = fb_post['story']
+            end
          end
          topic_title = fb_post['message'][0,50]
          # Remove new lines and replace with a space
