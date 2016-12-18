@@ -210,6 +210,12 @@ def fb_import_posts_into_dc(dc_category)
 
           # Remove new lines and replace with a space
           topic_title = topic_title.gsub( /\n/m, " " )
+
+          # Check if this post has an attached link
+          if fb_post['link']
+            fb_post['message'] += "\n\n#{fb_post['link']}"
+          end
+
          progress = post_count.percent_of(@fb_posts.count).round.to_s
     
          puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + " #{Time.at(Time.parse(DateTime.iso8601(fb_post['created_time']).to_s))}"
