@@ -132,11 +132,14 @@ end
 def fb_fetch_posts(group_id, until_time)
  
   # Fetch Facebook posts in batches and download writer/user info
+  print "\nFetching Facebook posts..."
    @fb_posts = []
    page = @graph.get_connections(group_id,'feed')
    begin
    @fb_posts += page
+   print "."
    end while page = page.next_page
+   print "\n"
  
     @fb_posts.each do |post|
       fb_extract_writer(post) # Extract the writer from the post
