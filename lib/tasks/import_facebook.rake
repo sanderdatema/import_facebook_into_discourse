@@ -256,7 +256,7 @@ def fb_import_posts_into_dc(dc_category)
         end while page = page.next_page
 
         comments.each do |comment|
-          dc_create_comment(comment, topic_id)
+          dc_create_comment(comment, post.topic_id)
         end
       end
    end
@@ -312,15 +312,15 @@ def dc_create_comment(comment, topic_id, post_number=nil)
 
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
 
-      subcomments = []
-      page = @graph.get_connections(comment["id"], "comments")
-      begin
-      subcomments += page
-      end while page = page.next_page
+  subcomments = []
+  page = @graph.get_connections(comment["id"], "comments")
+  begin
+  subcomments += page
+  end while page = page.next_page
 
-      subcomments.each do |subcomment|
-        dc_create_comment(subcomment, topic_id, post.post_number)
-      end
+  subcomments.each do |subcomment|
+    dc_create_comment(subcomment, topic_id, post.post_number)
+  end
     end
   end
 end
