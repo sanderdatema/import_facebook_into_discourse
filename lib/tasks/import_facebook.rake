@@ -160,7 +160,9 @@ def fb_import_posts_into_dc(dc_category)
    post_count = 0
    @fb_posts.each do |fb_post|
 
-      if PostCustomField.where(name: 'fb_id', value:  fb_post['id']).count == 0 then
+      post = fetch_dc_post_from_facebook_id fb_post['id']
+
+      unless post
          post_count += 1
     
          # Get details of the writer of this post
@@ -258,13 +260,15 @@ def fb_import_posts_into_dc(dc_category)
 end
 
 def dc_create_comment(comment, topic_id, post_number=nil)
-  if PostCustomField.where(name: 'fb_id', value:  comment['id']).count == 0 then
     comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s rescue nil}
     unless comment_user
       comment_user = { "id" => "1", "name" => "Unknown" }
     end
 
     dc_user = dc_get_user(fb_username_to_dc(comment_user['name'])) rescue nil
+  post = fetch_dc_post_from_facebook_id comment['id']
+
+  unless post
     unless dc_user
       puts "Unable to get Discourse user object for this comment:"
       puts comment.inspect
@@ -315,6 +319,11 @@ def dc_create_comment(comment, topic_id, post_number=nil)
   end
     end
   end
+
+def fetch_dc_post_from_facebook_id(fb_id)
+  facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
+  post = Post.where(id: facebook_field.post_id).first rescue nil
+end
 
 def fix_empty_messages(message_object)
   if message_object['message'].nil?
