@@ -203,12 +203,23 @@ def fb_import_posts_into_dc(dc_category)
             if topic_title.include? ". "
               topic_title = topic_title.split(". ")[0..-2].join(". ")
               topic_title += "."
+            else
+              topic_title += " [...]"
             end
-            topic_title += " [...]"
+          end
+
+          # Remove trailing period if it is the only period
+          if topic_title.count('.') == 1 and topic_title[-1] == '.'
+            topic_title.chop!
           end
 
           # Remove new lines and replace with a space
           topic_title = topic_title.gsub( /\n/m, " " )
+
+          # Fix all-caps titles
+          if topic_title == topic_title.upcase
+            topic_title = topic_title.downcase.capitalize
+          end
 
           # Check if this post has an attached link
           if fb_post['link']
