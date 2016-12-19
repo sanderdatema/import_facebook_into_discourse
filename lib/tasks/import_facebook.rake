@@ -173,13 +173,7 @@ def fb_import_posts_into_dc(dc_category)
          dc_user = dc_get_user(fb_username_to_dc(fb_post_user['name']))
        
          # Facebook posts don't have a title, so use first 50 characters of the post as title
-         if fb_post['message'].nil? then
-            if fb_post['story'].nil? then
-              fb_post['message'] = 'EMPTY'
-            else
-              fb_post['message'] = fb_post['story']
-            end
-         end
+         fb_post = fix_empty_messages fb_post
 
           # Extract topic title from message
           ##################################
@@ -277,9 +271,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
       exit
     end
 
-    if comment['message'].nil? then
-      comment['message'] = 'EMPTY'
-    end
+    comment = fix_empty_messages comment
 
     comment_time = comment['created_time'] || comment['updated_time']
 
@@ -323,6 +315,19 @@ def dc_create_comment(comment, topic_id, post_number=nil)
   end
     end
   end
+
+def fix_empty_messages(message_object)
+  if message_object['message'].nil?
+    if message_object['story'].nil?
+      message_object['message'] = 'EMPTY'
+    else
+      message_object['message'] = message_object['story']
+    end 
+  elsif message_object['message'].strip.empty?
+    message_object['message'] = 'EMPTY'
+  end 
+  message_object
+end
 end
 
 # Returns the Discourse category where imported Facebook posts will go
