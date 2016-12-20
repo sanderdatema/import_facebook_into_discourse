@@ -365,41 +365,49 @@ end
 # Create a Discourse user with Facebook info unless it already exists
 def dc_create_users_from_fb_writers
   @fb_writers.each do |fb_writer|
-    # Setup Discourse username
-    dc_username = fb_username_to_dc(fb_writer['name'])
- 
-    # Create email address for user
-    if fb_writer['email'].nil? then
-      dc_email = dc_username + "@localhost.fake"
-    else
-      if REAL_EMAIL then
-        dc_email = fb_writer['email']
-      else
-        dc_email = fb_writer['email'] + '.fake'
-      end
-    end
- 
-    # Create user if it doesn't exist
-    if User.where('username = ?', dc_username).empty? then
-      dc_user = User.create!(username: dc_username,
-                             name: fb_writer['name'],
-                             email: dc_email,
-                             approved: true,
-                             approved_by_id: dc_get_user_id(DC_ADMIN))
-   dc_user.activate; 
-      # Create Facebook credentials so the user could login later and claim his account
-      FacebookUserInfo.create!(user_id: dc_user.id,
-                               facebook_user_id: fb_writer['id'].to_i,
-                               username: fb_writer['name'],
-                               first_name: fb_writer['first_name'],
-                               last_name: fb_writer['last_name'],
-                               name: fb_writer['name'].tr(' ', '_'),
-                               link: fb_writer['link'])
-      # puts "User #{fb_writer['name']} (#{dc_username} / #{dc_email}) created".green
-    end
+    dc_create_user_from_fb_object fb_writer
   end
 end
  
+
+def dc_create_user_from_fb_object(fb_writer)
+  # Setup Discourse username
+  dc_username = fb_username_to_dc(fb_writer['name'])
+
+  # Create email address for user
+  if fb_writer['email'].nil? then
+    dc_email = dc_username + "@localhost.fake"
+  else
+  if REAL_EMAIL then
+    dc_email = fb_writer['email']
+  else
+    dc_email = fb_writer['email'] + '.fake'
+  end
+  end
+
+  # Create user if it doesn't exist
+  if User.where('username = ?', dc_username).empty? then
+    dc_user = User.create!(username: dc_username,
+                           name: fb_writer['name'],
+                           email: dc_email,
+                           approved: true,
+                           approved_by_id: dc_get_user_id(DC_ADMIN))
+    dc_user.activate;
+
+    # Create Facebook credentials so the user could login later and claim his account
+    FacebookUserInfo.create!(user_id: dc_user.id,
+                            facebook_user_id: fb_writer['id'].to_i,
+                            username: fb_writer['name'],
+                            first_name: fb_writer['first_name'],
+                            last_name: fb_writer['last_name'],
+                            name: fb_writer['name'].tr(' ', '_'),
+                            link: fb_writer['link'])
+
+    puts "User #{fb_writer['name']} (#{dc_username} / #{dc_email}) created".green
+    return dc_user
+  end
+end
+
 # Backup site settings
 def dc_backup_site_settings
   @site_settings = {}
