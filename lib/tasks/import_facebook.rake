@@ -271,15 +271,11 @@ def fb_import_posts_into_dc(dc_category)
 end
 
 def dc_create_comment(comment, topic_id, post_number=nil)
-    comment_user = @fb_writers.find {|k| k['id'] == comment['from']['id'].to_s rescue nil}
-    unless comment_user
-      comment_user = { "id" => "1", "name" => "Unknown" }
-    end
 
-    dc_user = dc_get_user(fb_username_to_dc(comment_user['name'])) rescue nil
   post = fetch_dc_post_from_facebook_id comment['id']
 
   unless post
+    dc_user = get_dc_user_from_fb_id comment['from']['id']
     unless dc_user
       puts "Unable to get Discourse user object for this comment:"
       puts comment.inspect
@@ -368,6 +364,16 @@ def dc_create_users_from_fb_writers
     dc_create_user_from_fb_object fb_writer
   end
 end
+
+def dc_create_user_from_id(fb_id)
+  user = FacebookUserInfo.where(facebook_user_id: fb_id.to_i).first
+  return true if user
+
+  fb_user_object = @graph.get_object(fb_id) rescue nil
+  return nil unless fb_user_object
+
+  dc_create_user_from_fb_object fb_user_object
+end
  
 
 def dc_create_user_from_fb_object(fb_writer)
@@ -408,6 +414,22 @@ def dc_create_user_from_fb_object(fb_writer)
   end
 end
 
+
+def get_dc_user_from_fb_id(fb_id)
+  existing_user = FacebookUserInfo.where(facebook_user_id: fb_id).first
+
+  if existing_user
+    dc_user = User.where(id: existing_user.user_id).first
+  else
+    dc_user = dc_create_user_from_id fb_id
+  end
+
+  if dc_user
+    return dc_user
+  else
+    return User.where(id: 15).first
+  end
+end
 # Backup site settings
 def dc_backup_site_settings
   @site_settings = {}
