@@ -233,6 +233,7 @@ def fb_import_posts_into_dc(dc_category)
          puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + " #{Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s))}"
       
          post_creator = PostCreator.new(dc_user,
+                                   skip_validations: true,
                                    raw: fb_post['message'],
                                    title: topic_title,
                                    archetype: 'regular',
@@ -292,6 +293,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
     if post_number
       post_creator = PostCreator.new(
         dc_user,
+        skip_validations: true,
         raw: comment['message'],
         category: DC_CATEGORY_NAME,
         topic_id: topic_id,
@@ -300,6 +302,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
     else
       post_creator = PostCreator.new(
         dc_user,
+        skip_validations: true,
         raw: comment['message'],
         category: DC_CATEGORY_NAME,
         topic_id: topic_id,
