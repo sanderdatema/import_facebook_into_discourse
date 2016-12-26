@@ -88,9 +88,6 @@ task "import:facebook_group" => :environment do
   if TEST_MODE then
     exit_script # We're done
   else
-    # Create users in Discourse
-    dc_create_users_from_fb_writers
- 
     # Backup Site Settings
     dc_backup_site_settings
  
@@ -141,18 +138,7 @@ def fb_fetch_posts(group_id, until_time)
    end while page = page.next_page
    print "\n"
  
-    @fb_posts.each do |post|
-      fb_extract_writer(post) # Extract the writer from the post
-      if not post['comments'].nil? then
-        comments = post['comments']['data']
-        comments.each do |comment|
-          fb_extract_writer(comment)
-        end
-      end
-    end
- 
   puts "\nAmount of posts: #{@fb_posts.count.to_s}"
-  puts "Amount of writers: #{@fb_writers.count.to_s}"
 end
  
 # Import Facebook posts into Discourse
@@ -164,17 +150,9 @@ def fb_import_posts_into_dc(dc_category)
 
       unless post
          post_count += 1
-    
-         # Get details of the writer of this post
-         fb_post_user = @fb_writers.find {|k| k['id'] == fb_post['from']['id'].to_s rescue nil}
-         unless fb_post_user
-           fb_post_user = { "name" => "Unknown" }
-         end
-         
-         # Get the Discourse user of this writer
-         dc_user = dc_get_user(fb_username_to_dc(fb_post_user['name']))
-       
-         # Facebook posts don't have a title, so use first 50 characters of the post as title
+
+         dc_user = get_dc_user_from_fb_from_field fb_post['from']
+
          fb_post = fix_empty_messages fb_post
 
           # Extract topic title from message
@@ -276,12 +254,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
   post = fetch_dc_post_from_facebook_id comment['id']
 
   unless post
-    dc_user = get_dc_user_from_fb_id comment['from']['id']
-    unless dc_user
-      puts "Unable to get Discourse user object for this comment:"
-      puts comment.inspect
-      exit
-    end
+    dc_user = get_dc_user_from_fb_from_field comment['from']
 
     comment = fix_empty_messages comment
 
@@ -361,21 +334,49 @@ def dc_get_or_create_category(name, owner)
   end
 end
  
-# Create a Discourse user with Facebook info unless it already exists
-def dc_create_users_from_fb_writers
-  @fb_writers.each do |fb_writer|
-    dc_create_user_from_fb_object fb_writer
+def get_dc_user_from_fb_from_field(fb_from)
+  unless fb_from
+    return get_dc_user_for_unknown_poster
+  end
+
+  existing_user = FacebookUserInfo.where(facebook_user_id: fb_from['id']).first
+
+  if existing_user
+    dc_user = User.where(id: existing_user.user_id).first
+  else
+    fb_user_object = @graph.get_object(fb_id) rescue nil
+    if fb_user_object
+      dc_user = dc_create_user_from_fb_object fb_user_object
+    else
+      dc_user = dc_create_user_from_fb_object({ "name" => fb_from['name'],
+                                                "first_name" => fb_from['name'].split(" ")[0..-2].join(" "),
+                                                "last_name" => fb_from['name'].split(" ")[-1],
+                                                "id" => fb_from['id'],
+                                                "link" => "https://facebook.com/#{fb_from['id']}"})
+    end
+  end
+
+  if dc_user
+    return dc_user
+  else
+    puts "Failed to lookup or create user from this Facebook data:".red
+    puts fb_from.inspect
+    exit
   end
 end
 
-def dc_create_user_from_id(fb_id)
-  user = FacebookUserInfo.where(facebook_user_id: fb_id.to_i).first
-  return true if user
-
-  fb_user_object = @graph.get_object(fb_id) rescue nil
-  return nil unless fb_user_object
-
-  dc_create_user_from_fb_object fb_user_object
+def get_dc_user_for_unknown_poster
+  if dc_user_exists "UnknownUser"
+    puts "Post without author found, using UnknownUser...".red
+    return dc_get_user "UnknownUser"
+  else
+    puts "Post without author found, creating UnknownUser...".red
+    return dc_create_user_from_fb_object({ "name" => "UnknownUser",
+                                              "first_name" => "Unknown",
+                                              "last_name" => "User",
+                                              "id" => "0",
+                                              "link" => "https://facebook.com/#"})
+  end
 end
  
 
@@ -394,8 +395,6 @@ def dc_create_user_from_fb_object(fb_writer)
   end
   end
 
-  # Create user if it doesn't exist
-  if User.where('username = ?', dc_username).empty? then
     dc_user = User.create!(username: dc_username,
                            name: fb_writer['name'],
                            email: dc_email,
@@ -403,6 +402,10 @@ def dc_create_user_from_fb_object(fb_writer)
                            approved_by_id: dc_get_user_id(DC_ADMIN))
     dc_user.activate;
 
+  unless dc_user
+    puts "Failed to create Discourse user for this Facebook object:".red
+    puts fb_writer.inspect
+    exit
     # Create Facebook credentials so the user could login later and claim his account
     FacebookUserInfo.create!(user_id: dc_user.id,
                             facebook_user_id: fb_writer['id'].to_i,
@@ -417,22 +420,6 @@ def dc_create_user_from_fb_object(fb_writer)
   end
 end
 
-
-def get_dc_user_from_fb_id(fb_id)
-  existing_user = FacebookUserInfo.where(facebook_user_id: fb_id).first
-
-  if existing_user
-    dc_user = User.where(id: existing_user.user_id).first
-  else
-    dc_user = dc_create_user_from_id fb_id
-  end
-
-  if dc_user
-    return dc_user
-  else
-    return User.where(id: 15).first
-  end
-end
 # Backup site settings
 def dc_backup_site_settings
   @site_settings = {}
@@ -583,10 +570,24 @@ end
  
 def fb_username_to_dc(name)
   # Create username from full name, only letters and numbers
-  username = name.to_ascii.downcase.tr('^A-Za-z0-9', '')
+  username = name.to_ascii.tr('^A-Za-z0-9', '')
  
   # Maximum length of a Discourse username is 15 characters
-  username = username[0,15]
+  username = username[0,19]
+
+  while User.where('username = ?', username).exists?
+    if username[-1] =~ /[[:digit:]]/
+      digits = ""
+      while username[-1] =~ /[[:digit:]]/
+        digits = "#{username[-1]}#{digits}"
+        username.chop!
+      end
+      digits = (digits.to_i + 1).to_s
+      username = "#{username[0..19-digits.length]}#{digits}"
+    else
+      username = "#{username[0..18]}2"
+    end
+  end
 
   return username
 end
