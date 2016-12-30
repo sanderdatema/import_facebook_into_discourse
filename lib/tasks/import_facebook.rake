@@ -67,6 +67,8 @@ task "import:facebook_group" => :environment do
    if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
    unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
  
+   RateLimiter.disable
+
    # Some checks
    # Exit rake task if admin user doesn't exist
    unless dc_user_exists(DC_ADMIN) then
@@ -233,10 +235,14 @@ def fb_import_posts_into_dc(dc_category)
    
          end
       end
+
+      if post && post['like_count'] > 0
+        fetch_likes_for_item post
+      end
       # Now create the replies, using the Facebook comments
       unless fb_post['comments'].nil? then
         comments = []
-        page = @graph.get_connections(fb_post["id"], "comments", { "fields" => "id,from,message,created_time,comment_count" })
+        page = @graph.get_connections(fb_post["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
         begin
         comments += page
         end while page = page.next_page
@@ -291,12 +297,16 @@ def dc_create_comment(comment, topic_id, post_number=nil)
 
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
 
+  if comment['like_count'] && comment['like_count'] > 0
+    fetch_likes_for_item post
+  end
+
   unless comment['comment_count'] && comment['comment_count'] > 0
     return nil
   end
 
   subcomments = []
-  page = @graph.get_connections(comment["id"], "comments", { "fields" => "id,from,message,created_time,comment_count" })
+  page = @graph.get_connections(comment["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
   begin
   subcomments += page
   end while page = page.next_page
@@ -424,6 +434,28 @@ def dc_create_user_from_fb_object(fb_writer)
     return dc_user
   end
 end
+
+def fetch_likes_for_item(item)
+  fb_id = item.custom_fields['fb_id']
+
+  likes = @graph.get_connections(fb_id, 'likes')
+
+  if likes.length > 0
+    likes.each do |like|
+      liker = get_dc_user_from_fb_object({ "from" => like })
+
+      if liker
+        begin
+          like_action = PostAction.act(liker, item, PostActionType.types[:like])
+        rescue PostAction::AlreadyActed
+          puts "  - #{liker.name} already liked #{item.id} (#{fb_id})".red
+        else
+          puts "  - #{liker.name} liked post #{item.id} (#{fb_id})".green
+        end
+      end
+    end
+  end 
+end 
 
 # Backup site settings
 def dc_backup_site_settings
