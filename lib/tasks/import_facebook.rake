@@ -151,7 +151,7 @@ def fb_import_posts_into_dc(dc_category)
       unless post
          post_count += 1
 
-         dc_user = get_dc_user_from_fb_from_field fb_post['from']
+         dc_user = get_dc_user_from_fb_object fb_post
 
          fb_post = fix_empty_messages fb_post
 
@@ -254,7 +254,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
   post = fetch_dc_post_from_facebook_id comment['id']
 
   unless post
-    dc_user = get_dc_user_from_fb_from_field comment['from']
+    dc_user = get_dc_user_from_fb_object comment
 
     comment = fix_empty_messages comment
 
@@ -338,7 +338,8 @@ def dc_get_or_create_category(name, owner)
   end
 end
  
-def get_dc_user_from_fb_from_field(fb_from)
+def  get_dc_user_from_fb_object(fb_object)
+  fb_from = fb_object['from']
   unless fb_from
     return get_dc_user_for_unknown_poster
   end
