@@ -65,6 +65,7 @@ task "import:facebook_group" => :environment do
    REAL_EMAIL = @config['real_email_addresses']
    GROUP_ID = @config['facebook_group_id'] 
    IMPORT_OLDEST_FIRST = @config['import_oldest_first']
+   API_CALL_DELAY = @config['api_call_delay']
    if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
    unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
  
@@ -128,13 +129,18 @@ def fb_initialize_connection(token)
  
   puts "\nFacebook token accepted".green
 end
+
+def graph
+  sleep API_CALL_DELAY
+  @graph
+end
  
 def fb_fetch_posts(group_id, until_time)
  
   # Fetch Facebook posts in batches and download writer/user info
   print "\nFetching Facebook posts..."
    @fb_posts = []
-   page = @graph.get_connections(group_id,'feed')
+   page = graph.get_connections(group_id,'feed')
    begin
    @fb_posts += page
    print "."
@@ -245,7 +251,7 @@ def fb_import_posts_into_dc(dc_category)
       # Now create the replies, using the Facebook comments
       unless fb_post['comments'].nil? then
         comments = []
-        page = @graph.get_connections(fb_post["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
+        page = graph.get_connections(fb_post["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
         begin
         comments += page
         end while page = page.next_page
@@ -309,7 +315,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
   end
 
   subcomments = []
-  page = @graph.get_connections(comment["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
+  page = graph.get_connections(comment["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
   begin
   subcomments += page
   end while page = page.next_page
@@ -362,7 +368,7 @@ def  get_dc_user_from_fb_object(fb_object)
   if existing_user
     dc_user = User.where(id: existing_user.user_id).first
   else
-    fb_user_object = @graph.get_object(fb_id) rescue nil
+    fb_user_object = graph.get_object(fb_id) rescue nil
     if fb_user_object
       dc_user = dc_create_user_from_fb_object fb_user_object
     else
@@ -441,7 +447,7 @@ end
 def fetch_likes_for_item(item)
   fb_id = item.custom_fields['fb_id']
 
-  likes = @graph.get_connections(fb_id, 'likes')
+  likes = graph.get_connections(fb_id, 'likes')
 
   if likes.length > 0
     likes.each do |like|
@@ -594,7 +600,7 @@ def fb_extract_writer(post)
   writer = post['from']['id'] 
   # Fetch user info from Facebook and add to writers array
   unless @fb_writers.any? {|w| w['id'] == writer.to_s}
-    writer_object = @graph.get_object(writer) rescue nil
+    writer_object = graph.get_object(writer) rescue nil
 
     if writer_object
       @fb_writers << writer_object

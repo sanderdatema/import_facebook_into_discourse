@@ -23,3 +23,6 @@ real_email_addresses: false
 
 # Import oldest (least recently changed) post first
 import_oldest_first: false
+
+# Number of seconds to wait before each API call to avoid rate limiting
+api_call_delay: 1
