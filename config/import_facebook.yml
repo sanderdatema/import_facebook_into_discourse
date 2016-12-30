@@ -20,3 +20,6 @@ test_mode: false
 
 # User real email addresses? If not, .fake will be added to the username
 real_email_addresses: false
+
+# Import oldest (least recently changed) post first
+import_oldest_first: false

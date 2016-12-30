@@ -64,6 +64,7 @@ task "import:facebook_group" => :environment do
    DC_ADMIN = @config['discourse_admin']
    REAL_EMAIL = @config['real_email_addresses']
    GROUP_ID = @config['facebook_group_id'] 
+   IMPORT_OLDEST_FIRST = @config['import_oldest_first']
    if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
    unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
  
@@ -140,6 +141,8 @@ def fb_fetch_posts(group_id, until_time)
    end while page = page.next_page
    print "\n"
  
+  @fb_posts.reverse! if IMPORT_OLDEST_FIRST
+
   puts "\nAmount of posts: #{@fb_posts.count.to_s}"
 end
  
