@@ -236,7 +236,7 @@ def fb_import_posts_into_dc(dc_category)
       # Now create the replies, using the Facebook comments
       unless fb_post['comments'].nil? then
         comments = []
-        page = @graph.get_connections(fb_post["id"], "comments")
+        page = @graph.get_connections(fb_post["id"], "comments", { "fields" => "id,from,message,created_time,comment_count" })
         begin
         comments += page
         end while page = page.next_page
@@ -291,8 +291,12 @@ def dc_create_comment(comment, topic_id, post_number=nil)
 
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
 
+  unless comment['comment_count'] && comment['comment_count'] > 0
+    return nil
+  end
+
   subcomments = []
-  page = @graph.get_connections(comment["id"], "comments")
+  page = @graph.get_connections(comment["id"], "comments", { "fields" => "id,from,message,created_time,comment_count" })
   begin
   subcomments += page
   end while page = page.next_page
