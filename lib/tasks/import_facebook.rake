@@ -234,7 +234,7 @@ def fb_import_posts_into_dc(dc_category)
          unless post_creator.errors.present? then
             topic_id = post.topic.id
             post.custom_fields['fb_id'] = fb_post['id']
-            post.save
+            post.save(validate: false)
             post_serializer = PostSerializer.new(post, scope: true, root: false)
 
 	    # NEXT LINE IS DISABLED - don't know what is it and what for, but it crashing process
@@ -301,7 +301,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
 
     unless post_creator.errors.present? then
       post.custom_fields['fb_id'] = comment['id']
-      post.save
+      post.save(validate: false)
       post_serializer = PostSerializer.new(post, scope: true, root: false)
 
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
