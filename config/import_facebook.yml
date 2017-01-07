@@ -9,6 +9,9 @@ facebook_token: FACEBOOK_TOKEN
 # The group ID you want to export posts from. Need to be a member of this group.
 facebook_group_id: FACEBOOK_GROUP_ID
 
+# Restart import from topic number
+restart_from_topic_number: 0
+
 # The category for the topics, will be created if needed
 discourse_category_name: Category
 

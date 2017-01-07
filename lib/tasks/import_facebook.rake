@@ -67,6 +67,7 @@ task "import:facebook_group" => :environment do
    GROUP_ID = @config['facebook_group_id'] 
    IMPORT_OLDEST_FIRST = @config['import_oldest_first']
    API_CALL_DELAY = @config['api_call_delay']
+   RESTART_FROM_TOPIC_NUMBER = @config['restart_from_topic_number'] || 0
    if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
    unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
  
@@ -156,7 +157,13 @@ end
 # Import Facebook posts into Discourse
 def fb_import_posts_into_dc(dc_category)
    post_count = 0
-   @fb_posts.each do |fb_post|
+
+   if RESTART_FROM_TOPIC_NUMBER > 0
+    puts "Last processed post was number #{RESTART_FROM_TOPIC_NUMBER} (FB: #{@fb_posts[RESTART_FROM_TOPIC_NUMBER]['id']}), continuing from there...:"
+   end
+
+   @fb_posts.each_with_index do |fb_post, num_posts_processed|
+      next if num_posts_processed < RESTART_FROM_TOPIC_NUMBER
 
       post = fetch_dc_post_from_facebook_id fb_post['id']
 
