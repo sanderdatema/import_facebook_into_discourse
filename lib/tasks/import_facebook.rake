@@ -52,6 +52,7 @@
  
 require 'koala'
 require 'stringex'
+require "unicode_utils/upcase"
  
 desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
@@ -207,7 +208,7 @@ def fb_import_posts_into_dc(dc_category)
 
           # Fix all-caps titles
           if topic_title == topic_title.upcase
-            topic_title = topic_title.downcase.capitalize
+            topic_title = UnicodeUtils.downcase(topic_title).capitalize
           end
 
           # Check if this post has an attached link
