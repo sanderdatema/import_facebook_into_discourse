@@ -253,10 +253,8 @@ def fb_import_posts_into_dc(dc_category)
          end
       end
 
-      if post && post['like_count'] > 0
-        fetch_likes_for_item post
-      end
 
+      fetch_likes(post)
       fetch_comments(fb_post, post.topic_id)
    end
    puts " - #{post_count.to_s} Posts imported".green
@@ -326,7 +324,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
 
   if comment['like_count'] && comment['like_count'] > 0
-    fetch_likes_for_item post
+    fetch_likes(post)
   end
 
   fetch_comments(comment, topic_id, post.post_number)
@@ -449,27 +447,32 @@ def dc_create_user_from_fb_object(fb_writer)
   end
 end
 
-def fetch_likes_for_item(item)
+def fetch_likes(item)
   fb_id = item.custom_fields['fb_id']
 
   likes = graph.get_connections(fb_id, 'likes')
 
   if likes.length > 0
     likes.each do |like|
-      liker = get_dc_user_from_fb_object({ "from" => like })
-
-      if liker
-        begin
-          like_action = PostAction.act(liker, item, PostActionType.types[:like])
-        rescue PostAction::AlreadyActed
-          puts "  - #{liker.name} already liked #{item.id} (#{fb_id})".red
-        else
-          puts "  - #{liker.name} liked post #{item.id} (#{fb_id})".green
-        end
-      end
+      create_like(like, item)
     end
   end 
 end 
+
+def create_like(like, item)
+  fb_id = item.custom_fields['fb_id']
+  liker = get_dc_user_from_fb_object({ "from" => like })
+
+  if liker
+    begin
+      like_action = PostAction.act(liker, item, PostActionType.types[:like])
+    rescue PostAction::AlreadyActed
+      puts "  - #{liker.name} already liked #{item.id} (#{fb_id})".yellow
+    else
+      puts "  - #{liker.name} liked post #{item.id} (#{fb_id})".green
+    end
+  end
+end
 
 # Backup site settings
 def dc_backup_site_settings
