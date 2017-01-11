@@ -256,20 +256,31 @@ def fb_import_posts_into_dc(dc_category)
       if post && post['like_count'] > 0
         fetch_likes_for_item post
       end
-      # Now create the replies, using the Facebook comments
-      unless fb_post['comments'].nil? then
-        comments = []
-        page = graph.get_connections(fb_post["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
-        begin
-        comments += page
-        end while page = page.next_page
 
-        comments.each do |comment|
-          dc_create_comment(comment, post.topic_id)
-        end
-      end
+      fetch_comments(fb_post, post.topic_id)
    end
    puts " - #{post_count.to_s} Posts imported".green
+end
+
+def fetch_comments(fb_item, topic_id, post_number=nil)
+  if fb_item['comments'] || (fb_item['comment_count'] && fb_item['comment_count'] > 0)
+    comment_count = fb_item['comments'].length rescue fb_item['comment_count']
+    puts "Fetching #{comment_count} comments for #{fb_item['id']}..."
+  else
+    #puts "No comments found for #{fb_item['id']}, skipping..."
+    return nil
+  end
+
+  comments = []
+  page = graph.get_connections(fb_item["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
+  begin
+  comments += page
+  end while page = page.next_page
+  comments.each do |comment|
+    dc_create_comment(comment, topic_id, post_number)
+  end
+
+  comments
 end
 
 def dc_create_comment(comment, topic_id, post_number=nil)
@@ -318,21 +329,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
     fetch_likes_for_item post
   end
 
-  unless comment['comment_count'] && comment['comment_count'] > 0
-    return nil
-  end
-
-  subcomments = []
-  page = graph.get_connections(comment["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
-  begin
-  subcomments += page
-  end while page = page.next_page
-
-  subcomments.each do |subcomment|
-    dc_create_comment(subcomment, topic_id, post.post_number)
-  end
-    end
-  end
+  fetch_comments(comment, topic_id, post.post_number)
 
 def fetch_dc_post_from_facebook_id(fb_id)
   facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
