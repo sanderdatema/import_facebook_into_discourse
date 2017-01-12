@@ -223,6 +223,8 @@ def fb_import_posts_into_dc(dc_category)
             fb_post['message'] += "\n\n#{fb_post['link']}"
           end
 
+          insert_user_tags fb_post
+
          progress = post_count.percent_of(@fb_posts.count).round.to_s
 
          fb_post_time = fb_post['created_time'] || fb_post['updated_time']
@@ -270,7 +272,7 @@ def fetch_comments(fb_item, topic_id, post_number=nil)
   end
 
   comments = []
-  page = graph.get_connections(fb_item["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count" })
+  page = graph.get_connections(fb_item["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count,message_tags" })
   begin
   comments += page
   end while page = page.next_page
@@ -291,6 +293,8 @@ def dc_create_comment(comment, topic_id, post_number=nil)
     comment = fix_empty_messages comment
 
     comment_time = comment['created_time'] || comment['updated_time']
+
+    insert_user_tags comment
 
     puts "Creating comment by #{dc_user.name}: #{comment['message']}"
 
@@ -471,6 +475,27 @@ def create_like(like, item)
     else
       puts "  - #{liker.name} liked post #{item.id} (#{fb_id})".green
     end
+  end
+end
+
+def insert_user_tags(fb_item)
+  return nil unless fb_item['message_tags']
+
+  fb_item['message_tags'].each_with_index do |tag, index|
+    tag = tag[1].first if tag.class == Array
+    next unless tag['type'] == 'user'
+
+    user = get_dc_user_from_fb_object({ 'from' => tag })
+    dc_tag = "@#{user.username}"
+
+    length_diff = dc_tag.length - tag['length']
+    fb_item['message_tags'].each_with_index do |t, i|
+      next unless i > index
+      t = t[1].first if t.class == Array
+      t['offset'] += length_diff
+    end
+
+    fb_item['message'][tag['offset'], tag['length']] = dc_tag
   end
 end
 
