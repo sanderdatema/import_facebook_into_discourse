@@ -279,24 +279,16 @@ def fb_import_posts_into_dc
                                    created_at: Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s)))
          post = post_creator.create
 
-         # Everything set, save the topic
-         unless post_creator.errors.present? then
-            topic_id = post.topic.id
             post.custom_fields['fb_id'] = fb_post['id']
             post.save(validate: false)
             post_serializer = PostSerializer.new(post, scope: true, root: false)
-
-	    # NEXT LINE IS DISABLED - don't know what is it and what for, but it crashing process
-            # post_serializer.topic_slug = post.topic.slug if post.topic.present?
-	    
             post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
 
           @post_count += 1
           puts progress + "Created topic by #{dc_user.name}: ".green + post.raw + post_info(post)
-   
-         end
       end
 
+      topic_id = post.topic.id
 
       if STORE_DATA_TO_FILES
         fetch_likes_or_load_from_disk(post)
@@ -373,11 +365,9 @@ def dc_create_comment(comment, topic_id, post_number=nil)
 
     post = post_creator.create
 
-    unless post_creator.errors.present? then
       post.custom_fields['fb_id'] = comment['id']
       post.save(validate: false)
       post_serializer = PostSerializer.new(post, scope: true, root: false)
-
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
       puts "Created comment by #{dc_user.name}: ".green + post.raw
       @comment_count += 1
@@ -509,7 +499,6 @@ def dc_create_user_from_fb_object(fb_writer)
 
     puts "User #{fb_writer['name']} (#{dc_username} / #{dc_email}) created".green
     return dc_user
-  end
 end
 
 def fetch_likes(item)
