@@ -53,6 +53,7 @@
 require 'koala'
 require 'stringex'
 require "unicode_utils/upcase"
+require 'json'
  
 desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
@@ -68,6 +69,7 @@ task "import:facebook_group" => :environment do
    IMPORT_OLDEST_FIRST = @config['import_oldest_first']
    API_CALL_DELAY = @config['api_call_delay']
    RESTART_FROM_TOPIC_NUMBER = @config['restart_from_topic_number'] || 0
+   STORE_DATA_TO_FILES = @config['store_data_to_files']
    if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
    unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
  
@@ -80,6 +82,8 @@ task "import:facebook_group" => :environment do
       exit_script
    end
    
+   create_directories_for_imported_data if STORE_DATA_TO_FILES
+
    # Setup Facebook connection
    fb_initialize_connection(FB_TOKEN)
    
@@ -89,7 +93,11 @@ task "import:facebook_group" => :environment do
   @fb_posts ||= [] # Initialize if needed
 
   # Fetch all facebook posts
-  fb_fetch_posts(GROUP_ID, current_unix_time)
+  if STORE_DATA_TO_FILES
+    fetch_posts_or_load_from_disk
+  else
+    fb_fetch_posts(GROUP_ID, current_unix_time)
+  end
  
   if TEST_MODE then
     exit_script # We're done
@@ -256,8 +264,13 @@ def fb_import_posts_into_dc(dc_category)
       end
 
 
-      fetch_likes(post)
-      fetch_comments(fb_post, post.topic_id)
+      if STORE_DATA_TO_FILES
+        fetch_likes_or_load_from_disk(post)
+        fetch_comments_or_load_from_disk(fb_post, topic_id)
+      else
+        fetch_likes(post)
+        fetch_comments(fb_post, post.topic_id)
+      end
    end
    puts " - #{post_count.to_s} Posts imported".green
 end
@@ -277,7 +290,7 @@ def fetch_comments(fb_item, topic_id, post_number=nil)
   comments += page
   end while page = page.next_page
   comments.each do |comment|
-    dc_create_comment(comment, topic_id, post_number)
+    dc_create_comment(comment.dup, topic_id, post_number)
   end
 
   comments
@@ -328,10 +341,18 @@ def dc_create_comment(comment, topic_id, post_number=nil)
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
 
   if comment['like_count'] && comment['like_count'] > 0
-    fetch_likes(post)
+    if STORE_DATA_TO_FILES
+      fetch_likes_or_load_from_disk(post)
+    else
+      fetch_likes(post)
+    end
   end
 
-  fetch_comments(comment, topic_id, post.post_number)
+  if STORE_DATA_TO_FILES
+    fetch_comments_or_load_from_disk(comment, topic_id, post.post_number)
+  else
+    fetch_comments(comment, topic_id, post.post_number)
+  end
 
 def fetch_dc_post_from_facebook_id(fb_id)
   facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
@@ -496,6 +517,65 @@ def insert_user_tags(fb_item)
     end
 
     fb_item['message'][tag['offset'], tag['length']] = dc_tag
+  end
+end
+
+def create_directories_for_imported_data
+  base_directory    = "#{Rails.root}/imported-data"
+  @import_directory = "#{base_directory}/#{GROUP_ID}"
+  directories = []
+  directories << base_directory
+  directories << @import_directory
+  directories << "#{@import_directory}/comments"
+  directories << "#{@import_directory}/likes"
+  directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
+end
+
+def fetch_posts_or_load_from_disk
+  filename  = "#{@import_directory}/#{GROUP_ID}.json"
+
+  if File.exist?(filename)
+    @fb_posts = JSON.parse File.read(filename)
+    puts "Loaded fetched @fb_posts from #{filename}"
+  else
+    fb_fetch_posts GROUP_ID, :foo
+    File.write filename, @fb_posts.to_json
+    puts "Saved fetched @fb_posts to #{filename}"
+  end
+end
+
+def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
+  filename = "#{@import_directory}/comments/#{fb_item['id']}.json"
+
+  if File.exist?(filename)
+    comments = JSON.parse File.read(filename)
+    puts "Loaded #{comments.length} comments for #{fb_item['id']} from disk"
+    comments.each do |comment|
+      dc_create_comment(comment, topic_id, post_number)
+    end
+  else
+    comments = fetch_comments(fb_item, topic_id, post_number)
+    return unless comments
+    File.write filename, comments.to_json
+    puts "Saved #{comments.length} fetched comments for #{fb_item['id']} to disk"
+  end
+end
+
+def fetch_likes_or_load_from_disk(item)
+  fb_id = item.custom_fields['fb_id']
+  filename  = "#{@import_directory}/likes/#{fb_id}.json"
+
+  if File.exist?(filename)
+    likes = JSON.parse File.read(filename)
+    puts "Loaded #{likes.length} likes for #{fb_id} from disk"
+    likes.each do |like|
+      create_like(like, item)
+    end
+  else
+    likes = fetch_likes(item)
+    return unless likes
+    File.write filename, likes.to_json
+    puts "Saved #{likes.length} fetched likes for #{fb_id} to disk"
   end
 end
 
