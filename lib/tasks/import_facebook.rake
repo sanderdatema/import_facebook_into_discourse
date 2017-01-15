@@ -57,6 +57,8 @@ require 'json'
  
 desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
+   TIME_AT_START = Time.now
+
    # Import configuration file
    @config = YAML.load_file('config/import_facebook.yml')
    TEST_MODE = @config['test_mode']
@@ -203,6 +205,7 @@ def fb_import_posts_into_dc
    end
 
    @fb_posts.each_with_index do |fb_post, num_posts_processed|
+      @latest_post_processed = num_posts_processed
       next if num_posts_processed < RESTART_FROM_TOPIC_NUMBER
 
       post = fetch_dc_post_from_facebook_id fb_post['id']
@@ -441,7 +444,7 @@ def  get_dc_user_from_fb_object(fb_object)
   else
     puts "Failed to lookup or create user from this Facebook data:".red
     puts fb_from.inspect
-    exit
+    exit_script
   end
 end
 
@@ -485,7 +488,7 @@ def dc_create_user_from_fb_object(fb_writer)
   unless dc_user
     puts "Failed to create Discourse user for this Facebook object:".red
     puts fb_writer.inspect
-    exit
+    exit_script
     # Create Facebook credentials so the user could login later and claim his account
     FacebookUserInfo.create!(user_id: dc_user.id,
                             facebook_user_id: fb_writer['id'].to_i,
@@ -727,10 +730,20 @@ end
 def unix_to_human_time(unix_time)
   Time.at(unix_time).strftime("%d/%m/%Y %H:%M")
 end
- 
+
+def total_run_time
+  total_seconds = Time.now - TIME_AT_START
+  seconds = total_seconds % 60
+  minutes = (total_seconds / 60) % 60
+  hours = total_seconds / (60 * 60)
+  format("%02d hours %02d minutes %02d seconds", hours, minutes, seconds)
+end
+
 # Exit the script
 def exit_script
   puts "\nScript will now exit\n".yellow
+  puts "Total run time: #{total_run_time}"
+  puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
   exit
 end
  
