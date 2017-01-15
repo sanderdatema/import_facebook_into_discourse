@@ -72,8 +72,12 @@ task "import:facebook_group" => :environment do
    API_CALL_DELAY = @config['api_call_delay']
    RESTART_FROM_TOPIC_NUMBER = @config['restart_from_topic_number'] || 0
    STORE_DATA_TO_FILES = @config['store_data_to_files']
-   if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
-   unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
+
+   puts "*** Running in TEST mode. No changes to Discourse database are made".yellow if TEST_MODE
+   puts "*** Using fake email addresses".yellow unless REAL_EMAIL
+   puts "*** Storing fetched data to disk, loading from disk when possible".yellow if STORE_DATA_TO_FILES
+   puts "*** Importing in reverse order (oldest posts first)".yellow if IMPORT_OLDEST_FIRST
+   puts "*** Delaying each API call #{API_CALL_DELAY} seconds to avoid rate limiting".yellow if API_CALL_DELAY > 0
 
    RateLimiter.disable
 
@@ -93,6 +97,7 @@ task "import:facebook_group" => :environment do
    # group_id = fb_get_group_id(FB_GROUP_NAME)
 
   @fb_posts ||= [] # Initialize if needed
+  @post_count, @comment_count, @like_count = 0, 0, 0
 
   # Fetch all facebook posts
   if STORE_DATA_TO_FILES
@@ -120,8 +125,7 @@ task "import:facebook_group" => :environment do
     dc_restore_site_settings
   end
 
-  puts "\n*** DONE".green
-  # DONE!
+  puts "\nDONE! Imported #{@post_count} posts, #{@comment_count} comments and #{@like_count} likes in #{total_run_time}\n".green
 end
 
 
@@ -139,7 +143,7 @@ def fb_initialize_connection(token)
     exit_script
   end
 
-  puts "\nFacebook token accepted".green
+  puts "Facebook token accepted".green
 end
 
 def graph
@@ -187,21 +191,17 @@ def graph_client_error(id, error)
 end
 
 def fb_fetch_posts(group_id, until_time)
- 
-  # Fetch Facebook posts in batches and download writer/user info
-  print "\nFetching Facebook posts..."
+  puts "Fetching all Facebook posts... (this will take several minutes for large groups)"
+  start_time = Time.now
   @fb_posts = graph_connections(group_id, 'feed')
   @fb_posts.reverse! if IMPORT_OLDEST_FIRST
-
-  puts "\nAmount of posts: #{@fb_posts.count.to_s}"
+  puts "...fetched #{@fb_posts.length} posts in #{Time.now - start_time} seconds."
 end
 
 # Import Facebook posts into Discourse
 def fb_import_posts_into_dc
-   post_count = 0
-
    if RESTART_FROM_TOPIC_NUMBER > 0
-    puts "Last processed post was number #{RESTART_FROM_TOPIC_NUMBER} (FB: #{@fb_posts[RESTART_FROM_TOPIC_NUMBER]['id']}), continuing from there...:"
+    puts "\nLast processed post was number #{RESTART_FROM_TOPIC_NUMBER} (FB: #{@fb_posts[RESTART_FROM_TOPIC_NUMBER]['id']}), continuing from there..."
    end
 
    @fb_posts.each_with_index do |fb_post, num_posts_processed|
@@ -210,9 +210,9 @@ def fb_import_posts_into_dc
 
       post = fetch_dc_post_from_facebook_id fb_post['id']
 
-      unless post
-         post_count += 1
-
+      if post
+        puts progress + "Already imported post #{post.id}".yellow + post_info(post)
+      else
          dc_user = get_dc_user_from_fb_object fb_post
 
          fb_post = fix_empty_messages fb_post
@@ -268,11 +268,7 @@ def fb_import_posts_into_dc
 
           insert_user_tags fb_post
 
-         progress = post_count.percent_of(@fb_posts.count).round.to_s
-
          fb_post_time = fb_post['created_time'] || fb_post['updated_time']
-
-         puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + " #{Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s))}"
 
          post_creator = PostCreator.new(dc_user,
                                    skip_validations: true,
@@ -294,6 +290,9 @@ def fb_import_posts_into_dc
             # post_serializer.topic_slug = post.topic.slug if post.topic.present?
 	    
             post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
+
+          @post_count += 1
+          puts progress + "Created topic by #{dc_user.name}: ".green + post.raw + post_info(post)
    
          end
       end
@@ -307,8 +306,20 @@ def fb_import_posts_into_dc
         fetch_comments(fb_post, post.topic_id)
       end
    end
-   puts " - #{post_count.to_s} Posts imported".green
 end
+
+def progress
+  num_posts_to_process = @fb_posts.length - RESTART_FROM_TOPIC_NUMBER
+  percentage = (@post_count.to_f / num_posts_to_process * 100).round(1)
+  "\n[#{percentage}%] [#{@latest_post_processed} of #{@fb_posts.length}] ".blue
+end
+
+def post_info(post)
+  timestamp = post.created_at.to_s[0..18]
+  id, fb_id = post.id, post.custom_fields['fb_id']
+  ids = "Post ID #{id} and Facebook ID #{fb_id}"
+  " (Posted by #{post.user.name} at #{timestamp} with #{ids})".blue
+end 
 
 def fetch_comments(fb_item, topic_id, post_number=nil)
   if fb_item['comments'] || (fb_item['comment_count'] && fb_item['comment_count'] > 0)
@@ -342,8 +353,6 @@ def dc_create_comment(comment, topic_id, post_number=nil)
 
     insert_user_tags comment
 
-    puts "Creating comment by #{dc_user.name}: #{comment['message']}"
-
     # Differentiate between comments and subcomments
     if post_number
       post_creator = PostCreator.new(
@@ -370,6 +379,10 @@ def dc_create_comment(comment, topic_id, post_number=nil)
       post_serializer = PostSerializer.new(post, scope: true, root: false)
 
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
+      puts "Created comment by #{dc_user.name}: ".green + post.raw
+      @comment_count += 1
+  else
+    puts "Already imported comment #{post.id} with Facebook ID #{post.custom_fields['fb_id']}, skipping...".yellow
 
   if comment['like_count'] && comment['like_count'] > 0
     if STORE_DATA_TO_FILES
@@ -528,6 +541,7 @@ def create_like(like, item)
       puts "  - #{liker.name} already liked #{item.id} (#{fb_id})".yellow
     else
       puts "  - #{liker.name} liked post #{item.id} (#{fb_id})".green
+      @like_count += 1
     end
   end
 end
@@ -569,11 +583,11 @@ def fetch_posts_or_load_from_disk
 
   if File.exist?(filename)
     @fb_posts = JSON.parse File.read(filename)
-    puts "Loaded fetched @fb_posts from #{filename}"
+    puts "Loaded #{@fb_posts.length} fetched Facebook posts from disk"
   else
     fb_fetch_posts GROUP_ID, :foo
     File.write filename, @fb_posts.to_json
-    puts "Saved fetched @fb_posts to #{filename}"
+    puts "Saved #{@fb_posts.length} fetched Facebook posts to disk"
   end
 end
 
@@ -742,7 +756,8 @@ end
 def exit_script
   puts "\nScript will now exit\n".yellow
   puts "Total run time: #{total_run_time}"
-  puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
+  puts "Imported #{@post_count} posts (#{progress}%), #{@comment_count} comments and #{@like_count} likes"
+  puts "Index of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
   exit
 end
 
@@ -814,12 +829,5 @@ class String
  
   def colorize(text, color_code)
     "\033[#{color_code}m#{text}\033[0m"
-  end
-end
-
-# Calculate percentage
-class Numeric
-  def percent_of(n)
-    self.to_f / n.to_f * 100.0
   end
 end
