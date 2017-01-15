@@ -103,7 +103,7 @@ task "import:facebook_group" => :environment do
   if STORE_DATA_TO_FILES
     fetch_posts_or_load_from_disk
   else
-    fb_fetch_posts(GROUP_ID, current_unix_time)
+    fb_fetch_posts
   end
 
   if TEST_MODE then
@@ -190,10 +190,10 @@ def graph_client_error(id, error)
   puts "\n#{error.message}"
 end
 
-def fb_fetch_posts(group_id, until_time)
+def fb_fetch_posts
   puts "Fetching all Facebook posts... (this will take several minutes for large groups)"
   start_time = Time.now
-  @fb_posts = graph_connections(group_id, 'feed')
+  @fb_posts = graph_connections(GROUP_ID, 'feed')
   @fb_posts.reverse! if IMPORT_OLDEST_FIRST
   puts "...fetched #{@fb_posts.length} posts in #{Time.now - start_time} seconds."
 end
@@ -416,7 +416,7 @@ def dc_get_or_create_category(name, owner)
   end
 end
 
-def  get_dc_user_from_fb_object(fb_object)
+def get_dc_user_from_fb_object(fb_object)
   fb_from = fb_object['from']
   unless fb_from
     return get_dc_user_for_unknown_poster
@@ -571,7 +571,7 @@ def fetch_posts_or_load_from_disk
     @fb_posts = JSON.parse File.read(filename)
     puts "Loaded #{@fb_posts.length} fetched Facebook posts from disk"
   else
-    fb_fetch_posts GROUP_ID, :foo
+    fb_fetch_posts
     File.write filename, @fb_posts.to_json
     puts "Saved #{@fb_posts.length} fetched Facebook posts to disk"
   end
@@ -713,21 +713,8 @@ def dc_user_exists(name)
   User.where('username = ?', name).exists?
 end
 
-def dc_get_user_id(name)
-  User.where('username = ?', name).first.id
-end
-
 def dc_get_user(name)
   User.where('username = ?', name).first
-end
-
-# Returns current unix time
-def current_unix_time
-  Time.now.to_i
-end
-
-def unix_to_human_time(unix_time)
-  Time.at(unix_time).strftime("%d/%m/%Y %H:%M")
 end
 
 def total_run_time
@@ -745,30 +732,6 @@ def exit_script
   puts "Imported #{@post_count} posts (#{progress}%), #{@comment_count} comments and #{@like_count} likes"
   puts "Index of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
   exit
-end
-
-def fb_extract_writer(post)
-  @fb_writers ||= [] # Initialize if needed
-
-  if post['from'].nil?
-    return nil
-  end
-
-  writer = post['from']['id'] 
-  # Fetch user info from Facebook and add to writers array
-  unless @fb_writers.any? {|w| w['id'] == writer.to_s}
-    writer_object = graph_object(writer)
-
-    if writer_object
-      @fb_writers << writer_object
-    else
-      puts "Writer UNKNOWN! #{post['from'].inspect}"
-      @fb_writers << {
-        "id" => "1",
-        "name" => "Unknown"
-      }
-    end
-  end
 end
 
 def fb_username_to_dc(name)
