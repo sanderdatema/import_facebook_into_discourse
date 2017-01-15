@@ -504,12 +504,15 @@ def fetch_likes(item)
   fb_id = item.custom_fields['fb_id']
 
   likes = graph_connections(fb_id, 'likes')
+  return nil if likes.blank?
 
   if likes.length > 0
     likes.each do |like|
       create_like(like, item)
     end
   end 
+
+  likes
 end 
 
 def create_like(like, item)
