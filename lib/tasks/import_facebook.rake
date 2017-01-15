@@ -144,19 +144,51 @@ def graph
   sleep API_CALL_DELAY
   @graph
 end
+
+def graph_connections(id, type, options={})
+  items = []
+
+  begin
+    page = graph.get_connections(id, type, options)
+    begin
+    items += page
+    end while page = page.next_page
+  rescue Koala::Facebook::AuthenticationError
+    graph_authentication_error
+  rescue Koala::Facebook::ClientError => error
+    graph_client_error(id, error)
+  end
+
+  items
+end
+
+def graph_object(id)
+  begin
+    @graph.get_object(id)
+  rescue Koala::Facebook::AuthenticationError
+    graph_authentication_error
+  rescue Koala::Facebook::ClientError => error
+    graph_client_error(id, error)
+  end
+end
+
+def graph_authentication_error
+  puts "\nWARNING: Facebook Authentication failed!".red
+  puts "\nThis is probably due to your access token having expired. Enter a new access token in config/import_facebook.yml and restart the import."
+  exit_script
+end
+
+def graph_client_error(id, error)
+  puts "\nWARNING: Unable to fetch object or connections for Facebook ID #{id}".red
+  puts "\nA common reason for this error is that the Graph API does not return data associated with Facebook user accounts which no longer exists. Full error message:"
+  puts "\n#{error.message}"
+end
  
 def fb_fetch_posts(group_id, until_time)
  
   # Fetch Facebook posts in batches and download writer/user info
   print "\nFetching Facebook posts..."
-   @fb_posts = []
-   page = graph.get_connections(group_id,'feed')
-   begin
-   @fb_posts += page
-   print "."
-   end while page = page.next_page
-   print "\n"
- 
+  @fb_posts = graph_connections(group_id, 'feed')
   @fb_posts.reverse! if IMPORT_OLDEST_FIRST
 
   puts "\nAmount of posts: #{@fb_posts.count.to_s}"
@@ -284,11 +316,9 @@ def fetch_comments(fb_item, topic_id, post_number=nil)
     return nil
   end
 
-  comments = []
-  page = graph.get_connections(fb_item["id"], "comments", { "fields" => "id,from,message,created_time,comment_count,like_count,message_tags" })
-  begin
-  comments += page
-  end while page = page.next_page
+  options = {"fields" => "id,from,message,created_time,comment_count,like_count,message_tags,attachment"}
+  comments = graph_connections(fb_item["id"], "comments", options)
+
   comments.each do |comment|
     dc_create_comment(comment.dup, topic_id, post_number)
   end
@@ -394,7 +424,7 @@ def  get_dc_user_from_fb_object(fb_object)
   if existing_user
     dc_user = User.where(id: existing_user.user_id).first
   else
-    fb_user_object = graph.get_object(fb_id) rescue nil
+    fb_user_object = graph_object(fb_id)
     if fb_user_object
       dc_user = dc_create_user_from_fb_object fb_user_object
     else
@@ -473,7 +503,7 @@ end
 def fetch_likes(item)
   fb_id = item.custom_fields['fb_id']
 
-  likes = graph.get_connections(fb_id, 'likes')
+  likes = graph_connections(fb_id, 'likes')
 
   if likes.length > 0
     likes.each do |like|
@@ -711,7 +741,7 @@ def fb_extract_writer(post)
   writer = post['from']['id'] 
   # Fetch user info from Facebook and add to writers array
   unless @fb_writers.any? {|w| w['id'] == writer.to_s}
-    writer_object = graph.get_object(writer) rescue nil
+    writer_object = graph_object(writer)
 
     if writer_object
       @fb_writers << writer_object
