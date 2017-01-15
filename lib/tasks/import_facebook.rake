@@ -49,12 +49,12 @@
 ############################################################
 #### The Rake Task
 ############################################################
- 
+
 require 'koala'
 require 'stringex'
 require "unicode_utils/upcase"
 require 'json'
- 
+
 desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
    TIME_AT_START = Time.now
@@ -74,7 +74,7 @@ task "import:facebook_group" => :environment do
    STORE_DATA_TO_FILES = @config['store_data_to_files']
    if TEST_MODE then puts "\n*** Running in TEST mode. No changes to Discourse database are made\n".yellow end
    unless REAL_EMAIL then puts "\n*** Using fake email addresses\n".yellow end
- 
+
    RateLimiter.disable
 
    # Some checks
@@ -83,15 +83,15 @@ task "import:facebook_group" => :environment do
       puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
       exit_script
    end
-   
+
    create_directories_for_imported_data if STORE_DATA_TO_FILES
 
    # Setup Facebook connection
    fb_initialize_connection(FB_TOKEN)
-   
+
    # Collect IDs
    # group_id = fb_get_group_id(FB_GROUP_NAME)
- 
+
   @fb_posts ||= [] # Initialize if needed
 
   # Fetch all facebook posts
@@ -100,35 +100,35 @@ task "import:facebook_group" => :environment do
   else
     fb_fetch_posts(GROUP_ID, current_unix_time)
   end
- 
+
   if TEST_MODE then
     exit_script # We're done
   else
     # Backup Site Settings
     dc_backup_site_settings
- 
+
     # Then set the temporary Site Settings we need
     dc_set_temporary_site_settings
- 
+
     # Create and/or set Discourse category
     dc_category = dc_get_or_create_category(DC_CATEGORY_NAME, DC_ADMIN)
- 
+
     # Import Facebooks posts into Discourse
     fb_import_posts_into_dc
- 
+
     # Restore Site Settings
     dc_restore_site_settings
   end
- 
+
   puts "\n*** DONE".green
   # DONE!
 end
- 
- 
+
+
 ############################################################
 #### Methods
 ############################################################
- 
+
 # Connect to the Facebook Graph API
 def fb_initialize_connection(token)
   begin
@@ -138,7 +138,7 @@ def fb_initialize_connection(token)
     puts "\nERROR: Connection with Facebook failed\n#{e.message}".red
     exit_script
   end
- 
+
   puts "\nFacebook token accepted".green
 end
 
@@ -185,7 +185,7 @@ def graph_client_error(id, error)
   puts "\nA common reason for this error is that the Graph API does not return data associated with Facebook user accounts which no longer exists. Full error message:"
   puts "\n#{error.message}"
 end
- 
+
 def fb_fetch_posts(group_id, until_time)
  
   # Fetch Facebook posts in batches and download writer/user info
@@ -195,7 +195,7 @@ def fb_fetch_posts(group_id, until_time)
 
   puts "\nAmount of posts: #{@fb_posts.count.to_s}"
 end
- 
+
 # Import Facebook posts into Discourse
 def fb_import_posts_into_dc
    post_count = 0
@@ -271,9 +271,9 @@ def fb_import_posts_into_dc
          progress = post_count.percent_of(@fb_posts.count).round.to_s
 
          fb_post_time = fb_post['created_time'] || fb_post['updated_time']
-    
+
          puts "[#{progress}%]".blue + " Creating topic '" + topic_title.blue + " #{Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s))}"
-      
+
          post_creator = PostCreator.new(dc_user,
                                    skip_validations: true,
                                    raw: fb_post['message'],
@@ -282,7 +282,7 @@ def fb_import_posts_into_dc
                                    category: DC_CATEGORY_NAME,
                                    created_at: Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s)))
          post = post_creator.create
-   
+
          # Everything set, save the topic
          unless post_creator.errors.present? then
             topic_id = post.topic.id
@@ -415,7 +415,7 @@ def dc_get_or_create_category(name, owner)
     category = Category.where('name = ?', name).first
   end
 end
- 
+
 def  get_dc_user_from_fb_object(fb_object)
   fb_from = fb_object['from']
   unless fb_from
@@ -461,7 +461,6 @@ def get_dc_user_for_unknown_poster
                                               "link" => "https://facebook.com/#"})
   end
 end
- 
 
 def dc_create_user_from_fb_object(fb_writer)
   # Setup Discourse username
@@ -516,7 +515,7 @@ def fetch_likes(item)
   end 
 
   likes
-end 
+end
 
 def create_like(like, item)
   fb_id = item.custom_fields['fb_id']
@@ -644,7 +643,7 @@ def dc_backup_site_settings
   @site_settings['dominating_topic_minimum_percent'] = SiteSetting.dominating_topic_minimum_percent
   @site_settings['disable_emails'] = SiteSetting.disable_emails
 end
- 
+
 # Restore site settings
 def dc_restore_site_settings
   SiteSetting.send("unique_posts_mins=", @site_settings['unique_posts_mins'])
@@ -675,7 +674,7 @@ def dc_restore_site_settings
   SiteSetting.send("dominating_topic_minimum_percent=", @site_settings['dominating_topic_minimum_percent'])
   SiteSetting.send("disable_emails=", @site_settings['disable_emails'])
 end
- 
+
 # Set temporary site settings needed for this rake task
 def dc_set_temporary_site_settings
   SiteSetting.send("unique_posts_mins=", 0)
@@ -706,27 +705,27 @@ def dc_set_temporary_site_settings
   SiteSetting.send("dominating_topic_minimum_percent=", 99)
   SiteSetting.send("disable_emails=", true)
 end
- 
+
 # Check if user exists
 # For some really weird reason this method returns the opposite value
 # So if it did find the user, the result is false
 def dc_user_exists(name)
   User.where('username = ?', name).exists?
 end
- 
+
 def dc_get_user_id(name)
   User.where('username = ?', name).first.id
 end
- 
+
 def dc_get_user(name)
   User.where('username = ?', name).first
 end
- 
+
 # Returns current unix time
 def current_unix_time
   Time.now.to_i
 end
- 
+
 def unix_to_human_time(unix_time)
   Time.at(unix_time).strftime("%d/%m/%Y %H:%M")
 end
@@ -746,10 +745,10 @@ def exit_script
   puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
   exit
 end
- 
+
 def fb_extract_writer(post)
   @fb_writers ||= [] # Initialize if needed
- 
+
   if post['from'].nil?
     return nil
   end
@@ -770,11 +769,11 @@ def fb_extract_writer(post)
     end
   end
 end
- 
+
 def fb_username_to_dc(name)
   # Create username from full name, only letters and numbers
   username = name.to_ascii.tr('^A-Za-z0-9', '')
- 
+
   # Maximum length of a Discourse username is 15 characters
   username = username[0,19]
 
@@ -794,7 +793,7 @@ def fb_username_to_dc(name)
 
   return username
 end
- 
+
 # Add colors to class String
 class String
   def red
@@ -817,7 +816,7 @@ class String
     "\033[#{color_code}m#{text}\033[0m"
   end
 end
- 
+
 # Calculate percentage
 class Numeric
   def percent_of(n)
