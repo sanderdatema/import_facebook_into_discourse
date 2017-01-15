@@ -427,7 +427,7 @@ def  get_dc_user_from_fb_object(fb_object)
   if existing_user
     dc_user = User.where(id: existing_user.user_id).first
   else
-    fb_user_object = graph_object(fb_id)
+    fb_user_object = graph_object(fb_from['id'])
     if fb_user_object
       dc_user = dc_create_user_from_fb_object fb_user_object
     else
