@@ -112,7 +112,7 @@ task "import:facebook_group" => :environment do
     dc_category = dc_get_or_create_category(DC_CATEGORY_NAME, DC_ADMIN)
  
     # Import Facebooks posts into Discourse
-    fb_import_posts_into_dc(dc_category)
+    fb_import_posts_into_dc
  
     # Restore Site Settings
     dc_restore_site_settings
@@ -163,7 +163,7 @@ def fb_fetch_posts(group_id, until_time)
 end
  
 # Import Facebook posts into Discourse
-def fb_import_posts_into_dc(dc_category)
+def fb_import_posts_into_dc
    post_count = 0
 
    if RESTART_FROM_TOPIC_NUMBER > 0
@@ -317,7 +317,6 @@ def dc_create_comment(comment, topic_id, post_number=nil)
         dc_user,
         skip_validations: true,
         raw: comment['message'],
-        category: DC_CATEGORY_NAME,
         topic_id: topic_id,
         reply_to_post_number: post_number,
         created_at: Time.at(Time.parse(DateTime.iso8601(comment_time).to_s)))
@@ -326,7 +325,6 @@ def dc_create_comment(comment, topic_id, post_number=nil)
         dc_user,
         skip_validations: true,
         raw: comment['message'],
-        category: DC_CATEGORY_NAME,
         topic_id: topic_id,
         created_at: Time.at(Time.parse(DateTime.iso8601(comment_time).to_s)))
     end
