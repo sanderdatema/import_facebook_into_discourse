@@ -227,53 +227,8 @@ def fb_import_posts_into_dc
 
          deal_with_empty_messages fb_post
 
-          # Extract topic title from message
-          ##################################
 
-          # Try to keep title length within this interval
-          lower_limit, upper_limit = 30, 200
-
-          # Begin by looking at the first paragraph
-          message_first_paragraph = fb_post['message'].split("\n\n").first
-
-          # Look at second paragraph if first is too short
-          if message_first_paragraph.length < lower_limit
-            second_paragraph = fb_post['message'].split("\n\n")[1]
-            if second_paragraph
-              message_first_paragraph += " "
-              message_first_paragraph += second_paragraph
-            end
-          end
-
-          # Use first paragraph if within limit, otherwise truncate
-          if message_first_paragraph.length < upper_limit
-            topic_title = message_first_paragraph
-          else
-            topic_title = message_first_paragraph[0,upper_limit]
-            if topic_title.include? ". "
-              topic_title = topic_title.split(". ")[0..-2].join(". ")
-              topic_title += "."
-            else
-              topic_title += " [...]"
-            end
-          end
-
-          # Remove trailing period if it is the only period
-          if topic_title.count('.') == 1 and topic_title[-1] == '.'
-            topic_title.chop!
-          end
-
-          # Remove new lines and replace with a space
-          topic_title = topic_title.gsub( /\n/m, " " )
-
-          # Fix all-caps titles
-          if topic_title == topic_title.upcase
-            topic_title = UnicodeUtils.downcase(topic_title).capitalize
-          end
-
-          if topic_title[0..3] == "<img"
-            topic_title = "[no title]"
-          end
+          topic_title = generate_topic_title fb_post
 
           # Check if this post has an attached link
           if fb_post['link'] and fb_post['type'] != 'photo'
@@ -307,6 +262,56 @@ def fb_import_posts_into_dc
       fetch_likes_or_load_from_disk(post)
       fetch_comments_or_load_from_disk(fb_post, topic_id)
    end
+end
+
+def generate_topic_title(fb_post)
+  # Keep title length within this interval
+  lower_limit, upper_limit = 30, 200
+
+  # Begin by looking at the first paragraph
+  message_first_paragraph = fb_post['message'].split("\n\n").first
+
+  # Look at second paragraph if first is too short
+  if message_first_paragraph.length < lower_limit
+    second_paragraph = fb_post['message'].split("\n\n")[1]
+    if second_paragraph
+      message_first_paragraph += " "
+      message_first_paragraph += second_paragraph
+    end
+  end
+
+  # Use first paragraph if within limit, otherwise truncate
+  if message_first_paragraph.length < upper_limit
+    topic_title = message_first_paragraph
+  else
+    topic_title = message_first_paragraph[0,upper_limit]
+    if topic_title.include? ". "
+      topic_title = topic_title.split(". ")[0..-2].join(". ")
+      topic_title += "."
+    else
+      topic_title += " [...]"
+    end
+  end
+
+  # Remove trailing period if it is the only period
+  if topic_title.count('.') == 1 and topic_title[-1] == '.'
+    topic_title.chop!
+  end
+
+  # Remove new lines and replace with a space
+  topic_title = topic_title.gsub( /\n/m, " " )
+
+  # Fix all-caps titles
+  if topic_title == topic_title.upcase
+    topic_title = UnicodeUtils.downcase(topic_title).capitalize
+  end
+
+  # Don't set internal image tag as title
+  if topic_title[0..3] == "<img"
+    topic_title = "[no title]"
+  end
+
+  topic_title
 end
 
 def progress
