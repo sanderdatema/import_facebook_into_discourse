@@ -206,62 +206,64 @@ end
 
 # Import Facebook posts into Discourse
 def fb_import_posts_into_dc
-   if RESTART_FROM_TOPIC_NUMBER > 0
+  if RESTART_FROM_TOPIC_NUMBER > 0
     puts "\nLast processed post was number #{RESTART_FROM_TOPIC_NUMBER} (FB: #{@fb_posts[RESTART_FROM_TOPIC_NUMBER]['id']}), continuing from there..."
-   end
+  end
 
-   @fb_posts.each_with_index do |fb_post, num_posts_processed|
-      @latest_post_processed = num_posts_processed
-      next if num_posts_processed < RESTART_FROM_TOPIC_NUMBER
+  @fb_posts.each_with_index do |fb_post, num_posts_processed|
+    @latest_post_processed = num_posts_processed
+    next if num_posts_processed < RESTART_FROM_TOPIC_NUMBER
 
-      post = fetch_dc_post_from_facebook_id fb_post['id']
+    post = fetch_dc_post_from_facebook_id fb_post['id']
 
-      if post
-        puts progress + "Already imported post #{post.id}".yellow + post_info(post)
-      else
-         dc_user = get_dc_user_from_fb_object fb_post
+    if post
+      puts progress + "Already imported post #{post.id}".yellow + post_info(post)
+    else
+      dc_user = get_dc_user_from_fb_object fb_post
 
-         if fb_post['type'] == 'photo'
-          fetch_image_or_load_from_disk fb_post
-         end
-
-         deal_with_empty_messages fb_post
-
-
-          topic_title = generate_topic_title fb_post
-
-          # Check if this post has an attached link
-          if fb_post['link'] and fb_post['type'] != 'photo'
-            fb_post['message'] += "\n\n#{fb_post['link']}"
-          end
-
-          insert_user_tags fb_post
-
-         fb_post_time = fb_post['created_time'] || fb_post['updated_time']
-
-         post_creator = PostCreator.new(dc_user,
-                                   skip_validations: true,
-                                   raw: fb_post['message'],
-                                   title: topic_title,
-                                   archetype: 'regular',
-                                   category: DC_CATEGORY_NAME,
-                                   created_at: Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s)))
-         post = post_creator.create
-
-            post.custom_fields['fb_id'] = fb_post['id']
-            post.save(validate: false)
-            post_serializer = PostSerializer.new(post, scope: true, root: false)
-            post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
-
-          @post_count += 1
-          puts progress + "Created topic by #{dc_user.name}: ".green + post.raw + post_info(post)
+      if fb_post['type'] == 'photo'
+        fetch_image_or_load_from_disk fb_post
       end
 
-      topic_id = post.topic.id
+      deal_with_empty_messages fb_post
 
-      fetch_likes_or_load_from_disk(post)
-      fetch_comments_or_load_from_disk(fb_post, topic_id)
-   end
+      topic_title = generate_topic_title fb_post
+
+      # Check if this post has an attached link
+      if fb_post['link'] and fb_post['type'] != 'photo'
+        fb_post['message'] += "\n\n#{fb_post['link']}"
+      end
+
+      insert_user_tags fb_post
+
+      fb_post_time = fb_post['created_time'] || fb_post['updated_time']
+
+      post_creator = PostCreator.new(
+        dc_user,
+        skip_validations: true,
+        raw: fb_post['message'],
+        title: topic_title,
+        archetype: 'regular',
+        category: DC_CATEGORY_NAME,
+        created_at: Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s)))
+
+      post = post_creator.create
+
+      post.custom_fields['fb_id'] = fb_post['id']
+      post.save(validate: false)
+      post_serializer = PostSerializer.new(post, scope: true, root: false)
+      post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
+
+      @post_count += 1
+      puts progress + "Created topic by #{dc_user.name}: ".green + topic_title + post_info(post)
+    end
+
+
+    topic_id = post.topic.id
+
+    fetch_likes_or_load_from_disk(post)
+    fetch_comments_or_load_from_disk(fb_post, topic_id)
+  end
 end
 
 def generate_topic_title(fb_post)
