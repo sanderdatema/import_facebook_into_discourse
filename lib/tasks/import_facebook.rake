@@ -776,6 +776,7 @@ end
 
 # Exit the script
 def exit_script
+  dc_restore_site_settings
   puts "\nScript will now exit\n".yellow
   puts "Total run time: #{total_run_time}"
   puts "Imported #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images"
