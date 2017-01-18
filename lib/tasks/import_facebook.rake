@@ -421,6 +421,9 @@ end
 def get_dc_user_from_fb_object(fb_object)
   fb_from = fb_object['from']
   unless fb_from
+    puts "\nWARNING: No from field found, using UnknownUser instead...".red
+    puts "The reason for missing from fields is often that a user account no longer exists or is unaccessible for some other reason. Here is the Facebook object in question:"
+    puts fb_object.inspect
     return get_dc_user_for_unknown_poster
   end
 
@@ -452,10 +455,8 @@ end
 
 def get_dc_user_for_unknown_poster
   if dc_user_exists "UnknownUser"
-    puts "Post without author found, using UnknownUser...".red
     return dc_get_user "UnknownUser"
   else
-    puts "Post without author found, creating UnknownUser...".red
     return dc_create_user_from_fb_object({ "name" => "UnknownUser",
                                               "first_name" => "Unknown",
                                               "last_name" => "User",
