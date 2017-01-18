@@ -225,7 +225,13 @@ def fb_import_posts_into_dc
         fetch_image_or_load_from_disk fb_post
       end
 
-      deal_with_empty_messages fb_post
+      if fb_post['message'].nil?
+        if fb_post['story']
+          fb_post['message'] = fb_post['story']
+        else
+          fb_post['message'] = ""
+        end
+      end
 
       topic_title = generate_topic_title fb_post
 
@@ -267,6 +273,8 @@ def fb_import_posts_into_dc
 end
 
 def generate_topic_title(fb_post)
+  return topic_title_placeholder if fb_post['message'].strip.empty?
+
   # Keep title length within this interval
   lower_limit, upper_limit = 30, 200
 
@@ -310,10 +318,14 @@ def generate_topic_title(fb_post)
 
   # Don't set internal image tag as title
   if topic_title[0..3] == "<img"
-    topic_title = "[no title]"
+    topic_title = topic_title_placeholder
   end
 
   topic_title
+end
+
+def topic_title_placeholder
+  "[no title]"
 end
 
 def progress
@@ -356,8 +368,6 @@ def dc_create_comment(comment, topic_id, post_number=nil)
     dc_user = get_dc_user_from_fb_object comment
 
     fetch_attachment(comment) if comment['attachment']
-
-    deal_with_empty_messages comment
 
     comment_time = comment['created_time'] || comment['updated_time']
 
@@ -403,17 +413,6 @@ end
 def fetch_dc_post_from_facebook_id(fb_id)
   facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
   post = Post.where(id: facebook_field.post_id).first rescue nil
-end
-
-def deal_with_empty_messages(message_object)
-  if message_object['message'].nil?
-    if message_object['story'].nil?
-      puts "WARNING: No message OR story field for this item:".red
-      puts message_object.inspect
-    else
-      message_object['message'] = message_object['story']
-    end
-  end
 end
 
 # Returns the Discourse category where imported Facebook posts will go
