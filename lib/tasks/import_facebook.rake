@@ -57,44 +57,44 @@ require 'json'
 
 desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
-   TIME_AT_START = Time.now
+  TIME_AT_START = Time.now
 
-   # Import configuration file
-   @config = YAML.load_file('config/import_facebook.yml')
-   TEST_MODE = @config['test_mode']
-   FB_TOKEN = @config['facebook_token']
-   FB_GROUP_NAME = @config['facebook_group_name']
-   DC_CATEGORY_NAME = @config['discourse_category_name']
-   DC_ADMIN = @config['discourse_admin']
-   REAL_EMAIL = @config['real_email_addresses']
-   GROUP_ID = @config['facebook_group_id'] 
-   IMPORT_OLDEST_FIRST = @config['import_oldest_first']
-   API_CALL_DELAY = @config['api_call_delay']
-   RESTART_FROM_TOPIC_NUMBER = @config['restart_from_topic_number'] || 0
-   STORE_DATA_TO_FILES = @config['store_data_to_files']
+  # Import configuration file
+  @config = YAML.load_file('config/import_facebook.yml')
+  TEST_MODE = @config['test_mode']
+  FB_TOKEN = @config['facebook_token']
+  FB_GROUP_NAME = @config['facebook_group_name']
+  DC_CATEGORY_NAME = @config['discourse_category_name']
+  DC_ADMIN = @config['discourse_admin']
+  REAL_EMAIL = @config['real_email_addresses']
+  GROUP_ID = @config['facebook_group_id'] 
+  IMPORT_OLDEST_FIRST = @config['import_oldest_first']
+  API_CALL_DELAY = @config['api_call_delay']
+  RESTART_FROM_TOPIC_NUMBER = @config['restart_from_topic_number'] || 0
+  STORE_DATA_TO_FILES = @config['store_data_to_files']
 
-   puts "*** Running in TEST mode. No changes to Discourse database are made".yellow if TEST_MODE
-   puts "*** Using fake email addresses".yellow unless REAL_EMAIL
-   puts "*** Storing fetched data to disk, loading from disk when possible".yellow if STORE_DATA_TO_FILES
-   puts "*** Importing in reverse order (oldest posts first)".yellow if IMPORT_OLDEST_FIRST
-   puts "*** Delaying each API call #{API_CALL_DELAY} seconds to avoid rate limiting".yellow if API_CALL_DELAY > 0
+  puts "*** Running in TEST mode. No changes to Discourse database are made".yellow if TEST_MODE
+  puts "*** Using fake email addresses".yellow unless REAL_EMAIL
+  puts "*** Storing fetched data to disk, loading from disk when possible".yellow if STORE_DATA_TO_FILES
+  puts "*** Importing in reverse order (oldest posts first)".yellow if IMPORT_OLDEST_FIRST
+  puts "*** Delaying each API call #{API_CALL_DELAY} seconds to avoid rate limiting".yellow if API_CALL_DELAY > 0
 
-   RateLimiter.disable
+  RateLimiter.disable
 
-   # Some checks
-   # Exit rake task if admin user doesn't exist
-   unless dc_user_exists(DC_ADMIN) then
-      puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
-      exit_script
-   end
+  # Some checks
+  # Exit rake task if admin user doesn't exist
+  unless dc_user_exists(DC_ADMIN) then
+    puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
+    exit_script
+  end
 
-   create_directories_for_imported_data if STORE_DATA_TO_FILES
+  create_directories_for_imported_data if STORE_DATA_TO_FILES
 
-   # Setup Facebook connection
-   fb_initialize_connection(FB_TOKEN)
+  # Setup Facebook connection
+  fb_initialize_connection(FB_TOKEN)
 
-   # Collect IDs
-   # group_id = fb_get_group_id(FB_GROUP_NAME)
+  # Collect IDs
+  # group_id = fb_get_group_id(FB_GROUP_NAME)
 
   @fb_posts ||= [] # Initialize if needed
   @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0
