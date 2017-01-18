@@ -221,6 +221,10 @@ def fb_import_posts_into_dc
       else
          dc_user = get_dc_user_from_fb_object fb_post
 
+         if fb_post['type'] == 'photo'
+          fetch_image_or_load_from_disk fb_post
+         end
+
          deal_with_empty_messages fb_post
 
           # Extract topic title from message
@@ -267,8 +271,12 @@ def fb_import_posts_into_dc
             topic_title = UnicodeUtils.downcase(topic_title).capitalize
           end
 
+          if topic_title[0..3] == "<img"
+            topic_title = "[no title]"
+          end
+
           # Check if this post has an attached link
-          if fb_post['link']
+          if fb_post['link'] and fb_post['type'] != 'photo'
             fb_post['message'] += "\n\n#{fb_post['link']}"
           end
 
@@ -561,7 +569,12 @@ def fetch_attachment(fb_item)
 end
 
 def fetch_image(fb_item)
-  url = fb_item['attachment']['media']['image']['src'] rescue nil
+  if fb_item['attachment']
+    url = fb_item['attachment']['media']['image']['src']
+  elsif fb_item['type'] == 'photo'
+    photo_object = graph_object fb_item['object_id']
+    url = photo_object['images'].first['source']
+  end
   file = FileHelper.download(url, 10**7, "facebook-imported-image", true)
   create_image fb_item, file
   file
@@ -577,6 +590,7 @@ def create_image(fb_item, file)
   end
 
   tag = "<img src='#{upload.url}' width='#{upload.width}' height='#{upload.height}'>"
+  fb_item['message'] = "" unless fb_item['message']
   fb_item['message'] << "\n\n" unless fb_item['message'].strip.empty?
   fb_item['message'] << tag
   @image_count += 1
