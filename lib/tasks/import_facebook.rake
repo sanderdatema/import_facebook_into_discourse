@@ -163,6 +163,8 @@ def graph_connections(id, type, options={})
     graph_authentication_error
   rescue Koala::Facebook::ClientError => error
     graph_client_error(id, error)
+  rescue => error
+    graph_generic_error(error, id, type)
   end
 
   items
@@ -175,6 +177,8 @@ def graph_object(id)
     graph_authentication_error
   rescue Koala::Facebook::ClientError => error
     graph_client_error(id, error)
+  rescue => error
+    graph_generic_error(error, id)
   end
 end
 
@@ -189,6 +193,12 @@ def graph_client_error(id, error)
   puts "\nA common reason for this error is that the Graph API does not return data associated with Facebook user accounts which no longer exists. Full error message:"
   puts "\n#{error.message}"
 end
+
+def graph_generic_error(error, id, type=nil)
+  puts "\nWARNING: Something went wrong when fetching #{type + " for " if type}object #{id}".red
+  puts "\nHere is the full error message: #{error.message}"
+  exit_script
+end 
 
 def fb_fetch_posts
   puts "Fetching all Facebook posts... (this will take several minutes for large groups)"
