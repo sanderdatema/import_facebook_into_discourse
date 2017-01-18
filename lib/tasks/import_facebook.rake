@@ -97,7 +97,7 @@ task "import:facebook_group" => :environment do
    # group_id = fb_get_group_id(FB_GROUP_NAME)
 
   @fb_posts ||= [] # Initialize if needed
-  @post_count, @comment_count, @like_count = 0, 0, 0
+  @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0
 
   # Fetch all facebook posts
   if STORE_DATA_TO_FILES
@@ -125,7 +125,7 @@ task "import:facebook_group" => :environment do
     dc_restore_site_settings
   end
 
-  puts "\nDONE! Imported #{@post_count} posts, #{@comment_count} comments and #{@like_count} likes in #{total_run_time}\n".green
+  puts "\nDONE! Imported #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images in #{total_run_time}\n".green
 end
 
 
@@ -338,6 +338,8 @@ def dc_create_comment(comment, topic_id, post_number=nil)
 
   unless post
     dc_user = get_dc_user_from_fb_object comment
+
+    fetch_attachment(comment) if comment['attachment']
 
     deal_with_empty_messages comment
 
@@ -553,6 +555,36 @@ def insert_user_tags(fb_item)
   end
 end
 
+def fetch_attachment(fb_item)
+  case fb_item['attachment']['type']
+  when "photo"
+    fetch_image_or_load_from_disk fb_item
+  end
+end
+
+def fetch_image(fb_item)
+  url = fb_item['attachment']['media']['image']['src'] rescue nil
+  file = FileHelper.download(url, 10**7, "facebook-imported-image", true)
+  create_image fb_item, file
+  file
+end
+
+def create_image(fb_item, file)
+  user = get_dc_user_from_fb_object fb_item
+  filename = "#{fb_item['id']}.jpg"
+
+  upload = nil
+  silence_stream(STDERR) do
+    upload = Upload.create_for(user.id, file, filename, file.size)
+  end
+
+  tag = "<img src='#{upload.url}' width='#{upload.width}' height='#{upload.height}'>"
+  fb_item['message'] << "\n\n" unless fb_item['message'].strip.empty?
+  fb_item['message'] << tag
+  @image_count += 1
+  puts "Uploaded image for post with Facebook ID #{fb_item['id']}".green
+end
+
 def create_directories_for_imported_data
   base_directory    = "#{Rails.root}/imported-data"
   @import_directory = "#{base_directory}/#{GROUP_ID}"
@@ -561,6 +593,7 @@ def create_directories_for_imported_data
   directories << @import_directory
   directories << "#{@import_directory}/comments"
   directories << "#{@import_directory}/likes"
+  directories << "#{@import_directory}/images"
   directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
 end
 
@@ -609,6 +642,22 @@ def fetch_likes_or_load_from_disk(item)
     return unless likes
     File.write filename, likes.to_json
     puts "Saved #{likes.length} fetched likes for #{fb_id} to disk"
+  end
+end
+
+def fetch_image_or_load_from_disk(fb_item)
+  fetch_image(fb_item) unless STORE_DATA_TO_FILES
+  filename = "#{@import_directory}/images/#{fb_item['id']}.jpg"
+
+  if File.exist?(filename)
+    file = File.open(filename, 'r')
+    puts "Loaded image for #{fb_item['id']} from disk"
+    create_image(fb_item, file)
+  else
+    file = fetch_image fb_item
+    return unless file
+    File.write filename, file.read
+    puts "Saved fetched image for #{fb_item['id']} to disk"
   end
 end
 
@@ -729,7 +778,7 @@ end
 def exit_script
   puts "\nScript will now exit\n".yellow
   puts "Total run time: #{total_run_time}"
-  puts "Imported #{@post_count} posts (#{progress}%), #{@comment_count} comments and #{@like_count} likes"
+  puts "Imported #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images"
   puts "Index of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
   exit
 end
