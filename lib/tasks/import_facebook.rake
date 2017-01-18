@@ -376,12 +376,14 @@ def dc_create_comment(comment, topic_id, post_number=nil)
       @comment_count += 1
   else
     puts "Already imported comment #{post.id} with Facebook ID #{post.custom_fields['fb_id']}, skipping...".yellow
+  end
 
   if comment['like_count'] && comment['like_count'] > 0
     fetch_likes_or_load_from_disk(post)
   end
 
   fetch_comments_or_load_from_disk(comment, topic_id, post.post_number)
+end
 
 def fetch_dc_post_from_facebook_id(fb_id)
   facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
@@ -484,6 +486,8 @@ def dc_create_user_from_fb_object(fb_writer)
     puts "Failed to create Discourse user for this Facebook object:".red
     puts fb_writer.inspect
     exit_script
+  end
+
     # Create Facebook credentials so the user could login later and claim his account
     FacebookUserInfo.create!(user_id: dc_user.id,
                             facebook_user_id: fb_writer['id'].to_i,
