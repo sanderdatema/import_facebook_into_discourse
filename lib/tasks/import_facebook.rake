@@ -483,7 +483,7 @@ def dc_create_user_from_fb_object(fb_writer)
                            name: fb_writer['name'],
                            email: dc_email,
                            approved: true,
-                           approved_by_id: dc_get_user_id(DC_ADMIN))
+                           approved_by_id: dc_get_user(DC_ADMIN).id)
     dc_user.activate;
 
   unless dc_user
