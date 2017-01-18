@@ -100,11 +100,7 @@ task "import:facebook_group" => :environment do
   @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0
 
   # Fetch all facebook posts
-  if STORE_DATA_TO_FILES
-    fetch_posts_or_load_from_disk
-  else
-    fb_fetch_posts
-  end
+  fetch_posts_or_load_from_disk
 
   if TEST_MODE then
     exit_script # We're done
@@ -300,13 +296,8 @@ def fb_import_posts_into_dc
 
       topic_id = post.topic.id
 
-      if STORE_DATA_TO_FILES
-        fetch_likes_or_load_from_disk(post)
-        fetch_comments_or_load_from_disk(fb_post, topic_id)
-      else
-        fetch_likes(post)
-        fetch_comments(fb_post, post.topic_id)
-      end
+      fetch_likes_or_load_from_disk(post)
+      fetch_comments_or_load_from_disk(fb_post, topic_id)
    end
 end
 
@@ -387,18 +378,10 @@ def dc_create_comment(comment, topic_id, post_number=nil)
     puts "Already imported comment #{post.id} with Facebook ID #{post.custom_fields['fb_id']}, skipping...".yellow
 
   if comment['like_count'] && comment['like_count'] > 0
-    if STORE_DATA_TO_FILES
-      fetch_likes_or_load_from_disk(post)
-    else
-      fetch_likes(post)
-    end
+    fetch_likes_or_load_from_disk(post)
   end
 
-  if STORE_DATA_TO_FILES
-    fetch_comments_or_load_from_disk(comment, topic_id, post.post_number)
-  else
-    fetch_comments(comment, topic_id, post.post_number)
-  end
+  fetch_comments_or_load_from_disk(comment, topic_id, post.post_number)
 
 def fetch_dc_post_from_facebook_id(fb_id)
   facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
@@ -609,6 +592,8 @@ def create_directories_for_imported_data
 end
 
 def fetch_posts_or_load_from_disk
+  fb_fetch_posts unless STORE_DATA_TO_FILES
+
   filename  = "#{@import_directory}/#{GROUP_ID}.json"
 
   if File.exist?(filename)
@@ -622,6 +607,8 @@ def fetch_posts_or_load_from_disk
 end
 
 def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
+  fetch_comments(fb_item, topic_id, post_number) unless STORE_DATA_TO_FILES
+
   filename = "#{@import_directory}/comments/#{fb_item['id']}.json"
 
   if File.exist?(filename)
@@ -639,6 +626,8 @@ def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
 end
 
 def fetch_likes_or_load_from_disk(item)
+  fetch_likes(item) unless STORE_DATA_TO_FILES
+
   fb_id = item.custom_fields['fb_id']
   filename  = "#{@import_directory}/likes/#{fb_id}.json"
 
@@ -658,6 +647,7 @@ end
 
 def fetch_image_or_load_from_disk(fb_item)
   fetch_image(fb_item) unless STORE_DATA_TO_FILES
+
   filename = "#{@import_directory}/images/#{fb_item['id']}.jpg"
 
   if File.exist?(filename)
