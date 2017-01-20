@@ -85,7 +85,7 @@ task "import:facebook_group" => :environment do
   # Exit rake task if admin user doesn't exist
   unless dc_user_exists(DC_ADMIN) then
     puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
-    exit_script
+    exit
   end
 
   create_directories_for_imported_data if STORE_DATA_TO_FILES
@@ -98,12 +98,13 @@ task "import:facebook_group" => :environment do
 
   @fb_posts ||= [] # Initialize if needed
   @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0
+  @unfetched_posts, @empty_posts = [], []
 
   # Fetch all facebook posts
   fetch_posts_or_load_from_disk
 
   if TEST_MODE then
-    exit_script # We're done
+    exit
   else
     # Backup Site Settings
     dc_backup_site_settings
@@ -114,14 +115,14 @@ task "import:facebook_group" => :environment do
     # Create and/or set Discourse category
     dc_category = dc_get_or_create_category(DC_CATEGORY_NAME, DC_ADMIN)
 
-    # Import Facebooks posts into Discourse
-    fb_import_posts_into_dc
-
-    # Restore Site Settings
-    dc_restore_site_settings
+    begin
+      fb_import_posts_into_dc
+      puts "\nDONE!"
+    ensure
+      dc_restore_site_settings
+      exit_report
+    end
   end
-
-  puts "\nDONE! Imported #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images in #{total_run_time}\n".green
 end
 
 
@@ -136,7 +137,7 @@ def fb_initialize_connection(token)
     test = @graph.get_object('me')
   rescue Koala::Facebook::APIError => e
     puts "\nERROR: Connection with Facebook failed\n#{e.message}".red
-    exit_script
+    exit
   end
 
   puts "Facebook token accepted".green
@@ -181,10 +182,11 @@ end
 def graph_authentication_error
   puts "\nWARNING: Facebook Authentication failed!".red
   puts "\nThis is probably due to your access token having expired. Enter a new access token in config/import_facebook.yml and restart the import."
-  exit_script
+  exit
 end
 
 def graph_client_error(id, error)
+  @unfetched_posts << id
   puts "\nWARNING: Unable to fetch object or connections for Facebook ID #{id}".red
   puts "\nA common reason for this error is that the Graph API does not return data associated with Facebook user accounts which no longer exists. Full error message:"
   puts "\n#{error.message}"
@@ -193,7 +195,7 @@ end
 def graph_generic_error(error, id, type=nil)
   puts "\nWARNING: Something went wrong when fetching #{type + " for " if type}object #{id}".red
   puts "\nHere is the full error message: #{error.message}"
-  exit_script
+  exit
 end 
 
 def fb_fetch_posts
@@ -232,6 +234,8 @@ def fb_import_posts_into_dc
           fb_post['message'] = ""
         end
       end
+
+      @empty_posts << fb_post['id'] if fb_post['message'].strip.empty?
 
       topic_title = generate_topic_title fb_post
 
@@ -458,7 +462,7 @@ def get_dc_user_from_fb_object(fb_object)
   else
     puts "Failed to lookup or create user from this Facebook data:".red
     puts fb_from.inspect
-    exit_script
+    exit
   end
 end
 
@@ -499,7 +503,7 @@ def dc_create_user_from_fb_object(fb_writer)
   unless dc_user
     puts "Failed to create Discourse user for this Facebook object:".red
     puts fb_writer.inspect
-    exit_script
+    exit
   end
 
     # Create Facebook credentials so the user could login later and claim his account
@@ -799,14 +803,20 @@ def total_run_time
   format("%02d hours %02d minutes %02d seconds", hours, minutes, seconds)
 end
 
-# Exit the script
-def exit_script
-  dc_restore_site_settings
-  puts "\nScript will now exit\n".yellow
-  puts "Total run time: #{total_run_time}"
-  puts "Imported #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images"
-  puts "Index of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
-  exit
+def exit_report
+  unless @unfetched_posts.empty?
+    puts "\nThese Facebook objects could not be fetched from the API:".red
+    puts @unfetched_posts.inspect
+  end
+  unless @empty_posts.empty?
+    puts "\nNo contents was imported for these Facebook posts:".red
+    puts @empty_posts.inspect
+  end
+  puts "\nTotal run time: #{total_run_time}"
+  puts "\nImported #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
+  unless @latest_post_processed >= @fb_posts.length
+    puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
+  end
 end
 
 def fb_username_to_dc(name)
