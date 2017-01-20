@@ -823,7 +823,7 @@ def exit_report
   end
   puts "\nTotal run time: #{total_run_time}"
   puts "\nImported #{@user_count} users, #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
-  unless @latest_post_processed >= @fb_posts.length
+  unless (@latest_post_processed + 1) >= @fb_posts.length
     puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n"
   end
   if TEST_MODE
