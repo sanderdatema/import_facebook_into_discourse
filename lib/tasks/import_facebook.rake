@@ -104,24 +104,23 @@ task "import:facebook_group" => :environment do
   fetch_posts_or_load_from_disk
 
   if TEST_MODE then
-    exit
-  else
-    # Backup Site Settings
-    dc_backup_site_settings
-
-    # Then set the temporary Site Settings we need
-    dc_set_temporary_site_settings
-
-    # Create and/or set Discourse category
-    dc_category = dc_get_or_create_category(DC_CATEGORY_NAME, DC_ADMIN)
-
     begin
-      fb_import_posts_into_dc
-      puts "\nDONE!"
+      test_import
     ensure
-      dc_restore_site_settings
       exit_report
     end
+  end
+
+  dc_backup_site_settings
+  dc_set_temporary_site_settings
+  dc_category = dc_get_or_create_category(DC_CATEGORY_NAME, DC_ADMIN)
+
+  begin
+    fb_import_posts_into_dc
+    puts "\nDONE!"
+  ensure
+    dc_restore_site_settings
+    exit_report
   end
 end
 
@@ -358,7 +357,7 @@ def fetch_comments(fb_item, topic_id, post_number=nil)
   comments = graph_connections(fb_item["id"], "comments", options)
 
   comments.each do |comment|
-    dc_create_comment(comment.dup, topic_id, post_number)
+    dc_create_comment(comment.dup, topic_id, post_number) unless TEST_MODE
   end
 
   comments
@@ -521,14 +520,14 @@ def dc_create_user_from_fb_object(fb_writer)
 end
 
 def fetch_likes(item)
-  fb_id = item.custom_fields['fb_id']
+  fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
 
   likes = graph_connections(fb_id, 'likes')
   return nil if likes.blank?
 
   if likes.length > 0
     likes.each do |like|
-      create_like(like, item)
+      create_like(like, item) unless TEST_MODE
     end
   end 
 
@@ -587,7 +586,7 @@ def fetch_image(fb_item)
     url = photo_object['images'].first['source']
   end
   file = FileHelper.download(url, 10**7, "facebook-imported-image", true)
-  create_image fb_item, file
+  create_image(fb_item, file) unless TEST_MODE
   file
 end
 
@@ -639,12 +638,13 @@ def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
   fetch_comments(fb_item, topic_id, post_number) unless STORE_DATA_TO_FILES
 
   filename = "#{@import_directory}/comments/#{fb_item['id']}.json"
+  comments = nil
 
   if File.exist?(filename)
     comments = JSON.parse File.read(filename)
     puts "Loaded #{comments.length} comments for #{fb_item['id']} from disk"
     comments.each do |comment|
-      dc_create_comment(comment, topic_id, post_number)
+      dc_create_comment(comment, topic_id, post_number) unless TEST_MODE
     end
   else
     comments = fetch_comments(fb_item, topic_id, post_number)
@@ -652,19 +652,22 @@ def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
     File.write filename, comments.to_json
     puts "Saved #{comments.length} fetched comments for #{fb_item['id']} to disk"
   end
+
+  comments
 end
 
 def fetch_likes_or_load_from_disk(item)
   fetch_likes(item) unless STORE_DATA_TO_FILES
 
-  fb_id = item.custom_fields['fb_id']
+  fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
   filename  = "#{@import_directory}/likes/#{fb_id}.json"
+  likes = nil
 
   if File.exist?(filename)
     likes = JSON.parse File.read(filename)
     puts "Loaded #{likes.length} likes for #{fb_id} from disk"
     likes.each do |like|
-      create_like(like, item)
+      create_like(like, item) unless TEST_MODE
     end
   else
     likes = fetch_likes(item)
@@ -672,23 +675,28 @@ def fetch_likes_or_load_from_disk(item)
     File.write filename, likes.to_json
     puts "Saved #{likes.length} fetched likes for #{fb_id} to disk"
   end
+
+  likes
 end
 
 def fetch_image_or_load_from_disk(fb_item)
   fetch_image(fb_item) unless STORE_DATA_TO_FILES
 
   filename = "#{@import_directory}/images/#{fb_item['id']}.jpg"
+  file = nil
 
   if File.exist?(filename)
     file = File.open(filename, 'r')
     puts "Loaded image for #{fb_item['id']} from disk"
-    create_image(fb_item, file)
+    create_image(fb_item, file) unless TEST_MODE
   else
     file = fetch_image fb_item
     return unless file
     File.write filename, file.read
     puts "Saved fetched image for #{fb_item['id']} to disk"
   end
+
+  file
 end
 
 # Backup site settings
@@ -816,7 +824,10 @@ def exit_report
   puts "\nTotal run time: #{total_run_time}"
   puts "\nImported #{@user_count} users, #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
   unless @latest_post_processed >= @fb_posts.length
-    puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
+    puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n"
+  end
+  if TEST_MODE
+    puts "\nNOTE: This was a test run, nothing has been imported to the Discourse database!\n".red
   end
 end
 
@@ -864,5 +875,62 @@ class String
  
   def colorize(text, color_code)
     "\033[#{color_code}m#{text}\033[0m"
+  end
+end
+
+def test_import
+  puts "\nTest mode! Will fetch and analyze but not save to database..."
+  @test_imported_users = []
+
+  @fb_posts.each_with_index do |post, index|
+    unless post['message']
+      post['message'] = ""
+      unless post['type'] == 'photo' or (post['attachment']['media']['image'] rescue nil)
+        @empty_posts << post['id']
+      end
+    end
+    puts "\n[#{index} of #{@fb_posts.length}] Post by #{post['from']['name']}: ".green + generate_topic_title(post).yellow
+    test_import_post_or_comment post
+    @post_count += 1
+    @latest_post_processed = index
+  end
+
+  exit
+end
+
+def test_import_post_or_comment(fb_item)
+  unless @test_imported_users.include? fb_item['from']
+    @test_imported_users << fb_item['from']
+    puts "  Found user #{fb_item['from']['name']}".green
+    @user_count += 1
+  end
+
+  if fb_item['attachment']
+    image = fetch_attachment(fb_item)
+  elsif fb_item['type'] == 'photo'
+    image = fetch_image_or_load_from_disk(fb_item)
+  end
+
+  if image
+    puts "  Image with size #{image.size}".green
+    @image_count += 1
+  end
+
+  likes = fetch_likes_or_load_from_disk(fb_item) || []
+  unless likes.empty?
+    puts "  Liked by #{likes.map { |l| l['name'] }.join(', ')}".green
+    @like_count += likes.length
+  end
+
+  test_import_comments(fb_item)
+end
+
+def test_import_comments(fb_item)
+  comments = fetch_comments_or_load_from_disk(fb_item, nil) || []
+  comments.each do |comment|
+    comment['message'] = comment['message'][0..49] + "..." if comment['message'].length >= 49
+    puts "  Comment by #{comment['from']['name'] rescue 'UnknownUser'}: ".green + comment['message'].yellow
+    test_import_post_or_comment comment
+    @comment_count += 1
   end
 end
