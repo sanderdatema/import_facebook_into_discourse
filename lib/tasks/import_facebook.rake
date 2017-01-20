@@ -883,6 +883,7 @@ def test_import
   @test_imported_users = []
 
   @fb_posts.each_with_index do |post, index|
+    next if index < RESTART_FROM_TOPIC_NUMBER
     unless post['message']
       post['message'] = ""
       unless post['type'] == 'photo' or (post['attachment']['media']['image'] rescue nil)
