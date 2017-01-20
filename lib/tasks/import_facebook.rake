@@ -97,7 +97,7 @@ task "import:facebook_group" => :environment do
   # group_id = fb_get_group_id(FB_GROUP_NAME)
 
   @fb_posts ||= [] # Initialize if needed
-  @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0
+  @user_count, @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0, 0
   @unfetched_posts, @empty_posts = [], []
 
   # Fetch all facebook posts
@@ -516,6 +516,7 @@ def dc_create_user_from_fb_object(fb_writer)
                             link: fb_writer['link'])
 
     puts "User #{fb_writer['name']} (#{dc_username} / #{dc_email}) created".green
+    @user_count += 1
     return dc_user
 end
 
@@ -813,7 +814,7 @@ def exit_report
     puts @empty_posts.inspect
   end
   puts "\nTotal run time: #{total_run_time}"
-  puts "\nImported #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
+  puts "\nImported #{@user_count} users, #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
   unless @latest_post_processed >= @fb_posts.length
     puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n\n"
   end
