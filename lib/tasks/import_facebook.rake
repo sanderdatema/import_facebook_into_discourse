@@ -220,7 +220,7 @@ def fb_import_posts_into_dc
     if post
       puts progress + "Already imported post #{post.id}".yellow + post_info(post)
     else
-      dc_user = get_dc_user_from_fb_object fb_post
+      dc_user = get_discourse_user fb_post
 
       if fb_post['type'] == 'photo'
         fetch_image_or_load_from_disk fb_post
@@ -368,7 +368,7 @@ def dc_create_comment(comment, topic_id, post_number=nil)
   post = fetch_dc_post_from_facebook_id comment['id']
 
   unless post
-    dc_user = get_dc_user_from_fb_object comment
+    dc_user = get_discourse_user comment
 
     fetch_attachment(comment) if comment['attachment']
 
@@ -430,95 +430,6 @@ def dc_get_or_create_category(name, owner)
   end
 end
 
-def get_dc_user_from_fb_object(fb_object)
-  fb_from = fb_object['from']
-  unless fb_from
-    puts "\nWARNING: No from field found, using UnknownUser instead...".red
-    puts "The reason for missing from fields is often that a user account no longer exists or is unaccessible for some other reason. Here is the Facebook object in question:"
-    puts fb_object.inspect
-    return get_dc_user_for_unknown_poster
-  end
-
-  existing_user = FacebookUserInfo.where(facebook_user_id: fb_from['id']).first
-
-  if existing_user
-    dc_user = User.where(id: existing_user.user_id).first
-  else
-    fb_user_object = graph_object(fb_from['id'])
-    if fb_user_object
-      dc_user = dc_create_user_from_fb_object fb_user_object
-    else
-      dc_user = dc_create_user_from_fb_object({ "name" => fb_from['name'],
-                                                "first_name" => fb_from['name'].split(" ")[0..-2].join(" "),
-                                                "last_name" => fb_from['name'].split(" ")[-1],
-                                                "id" => fb_from['id'],
-                                                "link" => "https://facebook.com/#{fb_from['id']}"})
-    end
-  end
-
-  if dc_user
-    return dc_user
-  else
-    puts "Failed to lookup or create user from this Facebook data:".red
-    puts fb_from.inspect
-    exit
-  end
-end
-
-def get_dc_user_for_unknown_poster
-  if dc_user_exists "UnknownUser"
-    return dc_get_user "UnknownUser"
-  else
-    return dc_create_user_from_fb_object({ "name" => "UnknownUser",
-                                              "first_name" => "Unknown",
-                                              "last_name" => "User",
-                                              "id" => "0",
-                                              "link" => "https://facebook.com/#"})
-  end
-end
-
-def dc_create_user_from_fb_object(fb_writer)
-  # Setup Discourse username
-  dc_username = fb_username_to_dc(fb_writer['name'])
-
-  # Create email address for user
-  if fb_writer['email'].nil? then
-    dc_email = dc_username + "@localhost.fake"
-  else
-  if REAL_EMAIL then
-    dc_email = fb_writer['email']
-  else
-    dc_email = fb_writer['email'] + '.fake'
-  end
-  end
-
-    dc_user = User.create!(username: dc_username,
-                           name: fb_writer['name'],
-                           email: dc_email,
-                           approved: true,
-                           approved_by_id: dc_get_user(DC_ADMIN).id)
-    dc_user.activate;
-
-  unless dc_user
-    puts "Failed to create Discourse user for this Facebook object:".red
-    puts fb_writer.inspect
-    exit
-  end
-
-    # Create Facebook credentials so the user could login later and claim his account
-    FacebookUserInfo.create!(user_id: dc_user.id,
-                            facebook_user_id: fb_writer['id'].to_i,
-                            username: fb_writer['name'],
-                            first_name: fb_writer['first_name'],
-                            last_name: fb_writer['last_name'],
-                            name: fb_writer['name'].tr(' ', '_'),
-                            link: fb_writer['link'])
-
-    puts "User #{fb_writer['name']} (#{dc_username} / #{dc_email}) created".green
-    @user_count += 1
-    return dc_user
-end
-
 def fetch_likes(item)
   fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
 
@@ -536,7 +447,7 @@ end
 
 def create_like(like, item)
   fb_id = item.custom_fields['fb_id']
-  liker = get_dc_user_from_fb_object({ "from" => like })
+  liker = get_discourse_user({ "from" => like })
 
   if liker
     begin
@@ -557,7 +468,7 @@ def insert_user_tags(fb_item)
     tag = tag[1].first if tag.class == Array
     next unless tag['type'] == 'user'
 
-    user = get_dc_user_from_fb_object({ 'from' => tag })
+    user = get_discourse_user({ 'from' => tag })
     dc_tag = "@#{user.username}"
 
     length_diff = dc_tag.length - tag['length']
@@ -591,7 +502,7 @@ def fetch_image(fb_item)
 end
 
 def create_image(fb_item, file)
-  user = get_dc_user_from_fb_object fb_item
+  user = get_discourse_user fb_item
   filename = "#{fb_item['id']}.jpg"
 
   upload = nil
@@ -616,6 +527,7 @@ def create_directories_for_imported_data
   directories << "#{@import_directory}/comments"
   directories << "#{@import_directory}/likes"
   directories << "#{@import_directory}/images"
+  directories << "#{@import_directory}/users"
   directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
 end
 
@@ -697,6 +609,119 @@ def fetch_image_or_load_from_disk(fb_item)
   end
 
   file
+end
+
+def get_discourse_user(fb_item)
+  return unknown_user unless fb_item['from']
+
+  @user_cache ||= {}
+  fb_user = @user_cache[fb_item['from']['id']]
+
+  unless fb_user
+    fb_user = fetch_user_or_load_from_disk(fb_item)
+    @user_cache[fb_user['id']] = fb_user
+
+    @user_count += 1 if TEST_MODE
+  end
+
+  return fb_user if TEST_MODE
+
+  lookup_user fb_user['id']
+end
+
+def lookup_user(id)
+  user_info = FacebookUserInfo.where(facebook_user_id: id).first
+  User.where(id: user_info.user_id ).first
+end
+
+def unknown_user
+  return dc_get_user("UnknownUser") if dc_user_exists("UnknownUser")
+
+  user_data = {
+    "name" => "UnknownUser",
+    "first_name" => "Unknown",
+    "last_name" => "User",
+    "id" => "0",
+    "link" => "https://facebook.com/#"}
+
+  return user_data if TEST_MODE
+
+  create_user(user_data)
+end
+
+def fetch_user_or_load_from_disk(fb_item)
+  fetch_user(fb_item) unless STORE_DATA_TO_FILES
+
+  user_id, user_name = fb_item['from']['id'], fb_item['from']['name']
+  filename = "#{@import_directory}/users/#{user_id}.json"
+  user = nil
+
+  if File.exist?(filename)
+    user = JSON.parse File.read(filename)
+    puts "Loaded user #{user_id} (#{user_name}) from disk"
+    create_user(user) unless TEST_MODE
+  else
+    user = fetch_user fb_item
+    return unless user
+    File.write filename, user.to_json
+    puts "Saved user #{user_id} (#{user_name}) to disk"
+  end
+
+  user
+end
+
+def fetch_user(fb_item)
+  id = fb_item['from']['id']
+  fb_user = graph_object id
+
+  unless fb_user
+    name       = fb_item['from']['name']
+    first_name = name.split(" ")[0..-2].join(" ")
+    last_name  = name.split(" ")[-1]
+
+    fb_user = {
+      "name" => name,
+      "first_name" => first_name,
+      "last_name" => last_name,
+      "id" => id,
+      "link" => "https://facebook.com/#{id}"}
+  end
+
+  create_user(fb_user) unless TEST_MODE
+
+  fb_user
+end
+
+def create_user(fb_user)
+  user = lookup_user fb_user['id']
+  return if user
+
+  username = fb_username_to_dc(fb_user['name'])
+  fb_user['email'] = username + "@localhost.fake" unless fb_user['email']
+  email = REAL_EMAIL ? fb_user['email'] : fb_user['email'] + '.fake'
+
+  user = User.create!(
+    username: username,
+    name: fb_user['name'],
+    email: email,
+    approved: true,
+    approved_by_id: dc_get_user(DC_ADMIN).id)
+
+  user.activate
+
+  # Create Facebook credentials so the user could login later and claim his account
+  FacebookUserInfo.create!(
+    user_id: user.id,
+    facebook_user_id: fb_user['id'].to_i,
+    username: fb_user['name'],
+    first_name: fb_user['first_name'],
+    last_name: fb_user['last_name'],
+    name: fb_user['name'].tr(' ', '_'),
+    link: fb_user['link'])
+
+  puts "User #{user.name} (#{user.username} / #{user.email}) created".green
+  @user_count += 1
+  user
 end
 
 # Backup site settings
@@ -880,7 +905,6 @@ end
 
 def test_import
   puts "\nTest mode! Will fetch and analyze but not save to database..."
-  @test_imported_users = []
 
   @fb_posts.each_with_index do |post, index|
     next if index < RESTART_FROM_TOPIC_NUMBER
@@ -890,7 +914,9 @@ def test_import
         @empty_posts << post['id']
       end
     end
-    puts "\n[#{index} of #{@fb_posts.length}] Post by #{post['from']['name']}: ".green + generate_topic_title(post).yellow
+
+    user = get_discourse_user post
+    puts "\n[#{index + 1} of #{@fb_posts.length}] Post by #{user['name']}: ".green + generate_topic_title(post).yellow
     test_import_post_or_comment post
     @post_count += 1
     @latest_post_processed = index
@@ -900,12 +926,6 @@ def test_import
 end
 
 def test_import_post_or_comment(fb_item)
-  unless @test_imported_users.include? fb_item['from']
-    @test_imported_users << fb_item['from']
-    puts "  Found user #{fb_item['from']['name']}".green
-    @user_count += 1
-  end
-
   if fb_item['attachment']
     image = fetch_attachment(fb_item)
   elsif fb_item['type'] == 'photo'
@@ -929,8 +949,9 @@ end
 def test_import_comments(fb_item)
   comments = fetch_comments_or_load_from_disk(fb_item, nil) || []
   comments.each do |comment|
+    user = get_discourse_user comment
     comment['message'] = comment['message'][0..49] + "..." if comment['message'].length >= 49
-    puts "  Comment by #{comment['from']['name'] rescue 'UnknownUser'}: ".green + comment['message'].yellow
+    puts "  Comment by #{user['name']}: ".green + comment['message'].yellow
     test_import_post_or_comment comment
     @comment_count += 1
   end
