@@ -518,7 +518,7 @@ def create_image(fb_item, file)
 end
 
 def create_directories_for_imported_data
-  base_directory    = "#{Rails.root}/imported-data"
+  base_directory    = "#{Rails.root}/facebook-data"
   @import_directory = "#{base_directory}/#{GROUP_ID}"
   directories = []
   directories << base_directory
