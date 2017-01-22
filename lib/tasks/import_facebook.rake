@@ -189,6 +189,26 @@ def graph_generic_error(error, id, type=nil)
   exit
 end
 
+# Posts
+################################################################################
+
+def fetch_posts_or_load_from_disk
+  return fetch_posts unless STORE_DATA_TO_FILES
+
+  filename  = "#{@import_directory}/#{GROUP_ID}.json"
+
+  if File.exist?(filename)
+    posts = JSON.parse File.read(filename)
+    puts "Loaded #{posts.length} fetched Facebook posts from disk"
+  else
+    posts = fetch_posts
+    File.write filename, posts.to_json
+    puts "Saved #{posts.length} fetched Facebook posts to disk"
+  end
+
+  posts
+end
+
 def fetch_posts
   puts "Fetching all Facebook posts... (this will take several minutes for large groups)"
   start_time = Time.now
@@ -215,7 +235,7 @@ def import_posts
 end
 
 def create_post(fb_post)
-  post = fetch_dc_post_from_facebook_id fb_post['id']
+  post = get_post_from_facebook_id fb_post['id']
 
   if post
     puts progress + "Already imported post #{post.id}".yellow + post_info(post)
@@ -271,6 +291,11 @@ def create_post(fb_post)
 
   fetch_likes_or_load_from_disk(post) if post['likes']
   fetch_comments_or_load_from_disk(fb_post, topic_id)
+end
+
+def get_post_from_facebook_id(fb_id)
+  facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
+  post = Post.where(id: facebook_field.post_id).first rescue nil
 end
 
 def generate_topic_title(fb_post)
@@ -363,7 +388,7 @@ end
 
 def dc_create_comment(comment, topic_id, post_number=nil)
 
-  post = fetch_dc_post_from_facebook_id comment['id']
+  post = get_post_from_facebook_id comment['id']
 
   unless post
     dc_user = get_discourse_user comment
@@ -411,11 +436,6 @@ def dc_create_comment(comment, topic_id, post_number=nil)
   end
 
   fetch_comments_or_load_from_disk(comment, topic_id, post.post_number)
-end
-
-def fetch_dc_post_from_facebook_id(fb_id)
-  facebook_field = PostCustomField.where(name: 'fb_id', value: fb_id).first
-  post = Post.where(id: facebook_field.post_id).first rescue nil
 end
 
 # Returns the Discourse category where imported Facebook posts will go
@@ -532,23 +552,6 @@ def create_directories_for_imported_data
   directories << "#{@import_directory}/images"
   directories << "#{@import_directory}/users"
   directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
-end
-
-def fetch_posts_or_load_from_disk
-  return fetch_posts unless STORE_DATA_TO_FILES
-
-  filename  = "#{@import_directory}/#{GROUP_ID}.json"
-
-  if File.exist?(filename)
-    posts = JSON.parse File.read(filename)
-    puts "Loaded #{posts.length} fetched Facebook posts from disk"
-  else
-    posts = fetch_posts
-    File.write filename, posts.to_json
-    puts "Saved #{posts.length} fetched Facebook posts to disk"
-  end
-
-  posts
 end
 
 def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
