@@ -98,15 +98,16 @@ task "import:facebook_group" => :environment do
     end
   end
 
-  dc_backup_site_settings
-  dc_set_temporary_site_settings
   get_or_create_category
+
+  email_setting = SiteSetting.disable_emails
+  SiteSetting.send("disable_emails=", true)
 
   begin
     import_posts
     puts "\nDONE!".green
   ensure
-    dc_restore_site_settings
+    SiteSetting.send("disable_emails=", email_setting)
     exit_report
   end
 end
@@ -804,31 +805,6 @@ def test_import_comments(fb_item)
     test_import_post_or_comment comment
     @comment_count += 1
   end
-end
-
-# Backup and restore settings
-################################################################################
-
-def dc_backup_site_settings
-  @site_settings = {}
-  @site_settings['newuser_spam_host_threshold'] = SiteSetting.newuser_spam_host_threshold
-  @site_settings['max_new_accounts_per_registration_ip'] = SiteSetting.max_new_accounts_per_registration_ip
-  @site_settings['max_age_unmatched_ips'] = SiteSetting.max_age_unmatched_ips
-  @site_settings['disable_emails'] = SiteSetting.disable_emails
-end
-
-def dc_restore_site_settings
-  SiteSetting.send("newuser_spam_host_threshold=", @site_settings['newuser_spam_host_threshold'])
-  SiteSetting.send("max_new_accounts_per_registration_ip=", @site_settings['max_new_accounts_per_registration_ip'])
-  SiteSetting.send("max_age_unmatched_ips=", @site_settings['max_age_unmatched_ips'])
-  SiteSetting.send("disable_emails=", @site_settings['disable_emails'])
-end
-
-def dc_set_temporary_site_settings
-  SiteSetting.send("newuser_spam_host_threshold=", 999)
-  SiteSetting.send("max_new_accounts_per_registration_ip=", 999)
-  SiteSetting.send("max_age_unmatched_ips=", 1)
-  SiteSetting.send("disable_emails=", true)
 end
 
 # Support Methods
