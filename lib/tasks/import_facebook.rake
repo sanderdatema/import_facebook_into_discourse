@@ -69,7 +69,7 @@ task "import:facebook_group" => :environment do
   REAL_EMAIL = @config['real_email_addresses']
   GROUP_ID = @config['facebook_group_id'] 
   IMPORT_OLDEST_FIRST = @config['import_oldest_first']
-  API_CALL_DELAY = @config['api_call_delay']
+  API_CALL_DELAY = @config['api_call_delay'] || 0
   RESTART_FROM_TOPIC_NUMBER = @config['restart_from_topic_number'] || 0
   STORE_DATA_TO_FILES = @config['store_data_to_files']
 
