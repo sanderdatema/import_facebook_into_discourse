@@ -90,9 +90,6 @@ task "import:facebook_group" => :environment do
 
   create_directories_for_imported_data if STORE_DATA_TO_FILES
 
-  # Setup Facebook connection
-  fb_initialize_connection(FB_TOKEN)
-
   # Collect IDs
   # group_id = fb_get_group_id(FB_GROUP_NAME)
 
@@ -130,19 +127,18 @@ end
 ############################################################
 
 # Connect to the Facebook Graph API
-def fb_initialize_connection(token)
+def initialize_connection
   begin
-    @graph = Koala::Facebook::API.new(token)
+    @graph = Koala::Facebook::API.new(FB_TOKEN)
     test = @graph.get_object('me')
   rescue Koala::Facebook::APIError => e
     puts "\nERROR: Connection with Facebook failed\n#{e.message}".red
     exit
   end
-
-  puts "Facebook token accepted".green
 end
 
 def graph
+  initialize_connection unless @graph
   sleep API_CALL_DELAY
   @graph
 end
@@ -270,7 +266,7 @@ def fb_import_posts_into_dc
 
     topic_id = post.topic.id
 
-    fetch_likes_or_load_from_disk(post)
+    fetch_likes_or_load_from_disk(post) if post['likes']
     fetch_comments_or_load_from_disk(fb_post, topic_id)
   end
 end
@@ -438,16 +434,17 @@ def fetch_likes(item)
 
   if likes.length > 0
     likes.each do |like|
-      create_like(like, item) unless TEST_MODE
+      liker = get_discourse_user({ "from" => like })
+      create_like(liker, item) unless TEST_MODE
     end
   end 
 
   likes
 end
 
-def create_like(like, item)
+def create_like(liker, item)
   fb_id = item.custom_fields['fb_id']
-  liker = get_discourse_user({ "from" => like })
+  liker = get_discourse_user({ "from" => liker }) unless liker.class == User
 
   if liker
     begin
@@ -469,6 +466,8 @@ def insert_user_tags(fb_item)
     next unless tag['type'] == 'user'
 
     user = get_discourse_user({ 'from' => tag })
+    next if TEST_MODE
+
     dc_tag = "@#{user.username}"
 
     length_diff = dc_tag.length - tag['length']
@@ -630,8 +629,12 @@ def get_discourse_user(fb_item)
 end
 
 def lookup_user(id)
-  user_info = FacebookUserInfo.where(facebook_user_id: id).first
-  User.where(id: user_info.user_id ).first
+  begin
+    user_info = FacebookUserInfo.where(facebook_user_id: id).first
+    User.where(id: user_info.user_id ).first
+  rescue
+    nil
+  end
 end
 
 def unknown_user
@@ -937,8 +940,13 @@ def test_import_post_or_comment(fb_item)
     @image_count += 1
   end
 
-  likes = fetch_likes_or_load_from_disk(fb_item) || []
-  unless likes.empty?
+  insert_user_tags fb_item
+
+  if fb_item['likes'] or (fb_item['like_count'] and fb_item['like_count'] > 0)
+    likes = fetch_likes_or_load_from_disk(fb_item)
+  end
+
+  unless likes.blank?
     puts "  Liked by #{likes.map { |l| l['name'] }.join(', ')}".green
     @like_count += likes.length
   end
