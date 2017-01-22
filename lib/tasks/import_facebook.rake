@@ -438,7 +438,7 @@ def create_comment(comment, topic_id, post_number=nil)
     post.save(validate: false)
     post_serializer = PostSerializer.new(post, scope: true, root: false)
     post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
-    log_message = comment['message'][0..49]
+    log_message = comment['message'][0..49].gsub("\n", "")
     log_message << "..." if comment['message'].length > 50
     puts "Created comment by #{dc_user.name}: ".green + log_message
     @comment_count += 1
@@ -801,7 +801,8 @@ def test_import_comments(fb_item)
   comments = fetch_comments_or_load_from_disk(fb_item, nil) || []
   comments.each do |comment|
     user = get_discourse_user comment
-    comment['message'] = comment['message'][0..49] + "..." if comment['message'].length >= 49
+    comment['message'] = comment['message'][0..49].gsub("\n", "")
+    comment['message'] << "..." if comment['message'].length > 50
     puts "  Comment by #{user['name']}: ".green + comment['message'].yellow
     test_import_post_or_comment comment
     @comment_count += 1
