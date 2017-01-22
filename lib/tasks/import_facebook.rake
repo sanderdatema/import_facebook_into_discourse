@@ -114,7 +114,7 @@ task "import:facebook_group" => :environment do
 
   begin
     fb_import_posts_into_dc
-    puts "\nDONE!"
+    puts "\nDONE!".green
   ensure
     dc_restore_site_settings
     exit_report
@@ -191,7 +191,7 @@ def graph_generic_error(error, id, type=nil)
   puts "\nWARNING: Something went wrong when fetching #{type + " for " if type}object #{id}".red
   puts "\nHere is the full error message: #{error.message}"
   exit
-end 
+end
 
 def fb_fetch_posts
   puts "Fetching all Facebook posts... (this will take several minutes for large groups)"
@@ -446,15 +446,13 @@ def create_like(liker, item)
   fb_id = item.custom_fields['fb_id']
   liker = get_discourse_user({ "from" => liker }) unless liker.class == User
 
-  if liker
-    begin
-      like_action = PostAction.act(liker, item, PostActionType.types[:like])
-    rescue PostAction::AlreadyActed
-      puts "  - #{liker.name} already liked #{item.id} (#{fb_id})".yellow
-    else
-      puts "  - #{liker.name} liked post #{item.id} (#{fb_id})".green
-      @like_count += 1
-    end
+  begin
+    like_action = PostAction.act(liker, item, PostActionType.types[:like])
+  rescue PostAction::AlreadyActed
+    puts "  - #{liker.name} already liked #{item.id} (#{fb_id})".yellow
+  else
+    puts "  - #{liker.name} liked post #{item.id} (#{fb_id})".green
+    @like_count += 1
   end
 end
 
@@ -495,7 +493,9 @@ def fetch_image(fb_item)
     photo_object = graph_object fb_item['object_id']
     url = photo_object['images'].first['source']
   end
+
   file = FileHelper.download(url, 10**7, "facebook-imported-image", true)
+
   create_image(fb_item, file) unless TEST_MODE
   file
 end
