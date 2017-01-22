@@ -396,7 +396,9 @@ def dc_create_comment(comment, topic_id, post_number=nil)
       post.save(validate: false)
       post_serializer = PostSerializer.new(post, scope: true, root: false)
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
-      puts "Created comment by #{dc_user.name}: ".green + post.raw
+      log_message = comment['message'][0..49]
+      log_message << "..." if comment['message'].length > 50
+      puts "Created comment by #{dc_user.name}: ".green + log_message
       @comment_count += 1
   else
     puts "Already imported comment #{post.id} with Facebook ID #{post.custom_fields['fb_id']}, skipping...".yellow
