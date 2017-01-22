@@ -473,6 +473,32 @@ def dc_get_or_create_category(name, owner)
   end
 end
 
+# Likes
+################################################################################
+
+def fetch_likes_or_load_from_disk(item)
+  return fetch_likes(item) unless STORE_DATA_TO_FILES
+
+  fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
+  filename  = "#{@import_directory}/likes/#{fb_id}.json"
+  likes = nil
+
+  if File.exist?(filename)
+    likes = JSON.parse File.read(filename)
+    puts "Loaded #{likes.length} likes for #{fb_id} from disk"
+    likes.each do |like|
+      create_like(like, item) unless TEST_MODE
+    end
+  else
+    likes = fetch_likes(item)
+    return unless likes
+    File.write filename, likes.to_json
+    puts "Saved #{likes.length} fetched likes for #{fb_id} to disk"
+  end
+
+  likes
+end
+
 def fetch_likes(item)
   fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
 
@@ -526,11 +552,34 @@ def insert_user_tags(fb_item)
   end
 end
 
+# Images
+################################################################################
+
 def fetch_attachment(fb_item)
   case fb_item['attachment']['type']
   when "photo"
     fetch_image_or_load_from_disk fb_item
   end
+end
+
+def fetch_image_or_load_from_disk(fb_item)
+  return fetch_image(fb_item) unless STORE_DATA_TO_FILES
+
+  filename = "#{@import_directory}/images/#{fb_item['id']}.jpg"
+  file = nil
+
+  if File.exist?(filename)
+    file = File.open(filename, 'r')
+    puts "Loaded image for #{fb_item['id']} from disk"
+    create_image(fb_item, file) unless TEST_MODE
+  else
+    file = fetch_image fb_item
+    return unless file
+    File.write filename, file.read
+    puts "Saved fetched image for #{fb_item['id']} to disk"
+  end
+
+  file
 end
 
 def fetch_image(fb_item)
@@ -577,48 +626,6 @@ def create_directories_for_imported_data
   directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
 end
 
-def fetch_likes_or_load_from_disk(item)
-  return fetch_likes(item) unless STORE_DATA_TO_FILES
-
-  fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
-  filename  = "#{@import_directory}/likes/#{fb_id}.json"
-  likes = nil
-
-  if File.exist?(filename)
-    likes = JSON.parse File.read(filename)
-    puts "Loaded #{likes.length} likes for #{fb_id} from disk"
-    likes.each do |like|
-      create_like(like, item) unless TEST_MODE
-    end
-  else
-    likes = fetch_likes(item)
-    return unless likes
-    File.write filename, likes.to_json
-    puts "Saved #{likes.length} fetched likes for #{fb_id} to disk"
-  end
-
-  likes
-end
-
-def fetch_image_or_load_from_disk(fb_item)
-  return fetch_image(fb_item) unless STORE_DATA_TO_FILES
-
-  filename = "#{@import_directory}/images/#{fb_item['id']}.jpg"
-  file = nil
-
-  if File.exist?(filename)
-    file = File.open(filename, 'r')
-    puts "Loaded image for #{fb_item['id']} from disk"
-    create_image(fb_item, file) unless TEST_MODE
-  else
-    file = fetch_image fb_item
-    return unless file
-    File.write filename, file.read
-    puts "Saved fetched image for #{fb_item['id']} to disk"
-  end
-
-  file
-end
 
 def get_discourse_user(fb_item)
   return unknown_user unless fb_item['from']
