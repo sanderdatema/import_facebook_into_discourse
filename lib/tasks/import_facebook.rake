@@ -59,7 +59,6 @@ desc "Import posts and comments from a Facebook group"
 task "import:facebook_group" => :environment do
   TIME_AT_START = Time.now
 
-  # Import configuration file
   @config = YAML.load_file('config/import_facebook.yml')
   TEST_MODE = @config['test_mode']
   FB_TOKEN = @config['facebook_token']
@@ -79,19 +78,14 @@ task "import:facebook_group" => :environment do
   puts "*** Importing in reverse order (oldest posts first)".yellow if IMPORT_OLDEST_FIRST
   puts "*** Delaying each API call #{API_CALL_DELAY} seconds to avoid rate limiting".yellow if API_CALL_DELAY > 0
 
-  RateLimiter.disable
-
-  # Some checks
-  # Exit rake task if admin user doesn't exist
   unless dc_user_exists(DC_ADMIN) then
     puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
     exit
   end
 
-  create_directories_for_imported_data if STORE_DATA_TO_FILES
+  RateLimiter.disable
 
-  # Collect IDs
-  # group_id = fb_get_group_id(FB_GROUP_NAME)
+  create_directories_for_imported_data if STORE_DATA_TO_FILES
 
   @user_count, @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0, 0
   @unfetched_posts, @empty_posts = [], []
@@ -255,7 +249,6 @@ def create_post(fb_post)
 
     topic_title = generate_topic_title fb_post
 
-    # Check if this post has an attached link
     if fb_post['link'] and fb_post['type'] != 'photo'
       fb_post['message'] += "\n\n#{fb_post['link']}"
     end
@@ -439,14 +432,14 @@ def create_comment(comment, topic_id, post_number=nil)
 
     post = post_creator.create
 
-      post.custom_fields['fb_id'] = comment['id']
-      post.save(validate: false)
-      post_serializer = PostSerializer.new(post, scope: true, root: false)
-      post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
-      log_message = comment['message'][0..49]
-      log_message << "..." if comment['message'].length > 50
-      puts "Created comment by #{dc_user.name}: ".green + log_message
-      @comment_count += 1
+    post.custom_fields['fb_id'] = comment['id']
+    post.save(validate: false)
+    post_serializer = PostSerializer.new(post, scope: true, root: false)
+    post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
+    log_message = comment['message'][0..49]
+    log_message << "..." if comment['message'].length > 50
+    puts "Created comment by #{dc_user.name}: ".green + log_message
+    @comment_count += 1
   else
     puts "Already imported comment #{post.id} with Facebook ID #{post.custom_fields['fb_id']}, skipping...".yellow
   end
@@ -706,7 +699,7 @@ def create_user(fb_user)
 
   user.activate
 
-  # Create Facebook credentials so the user could login later and claim his account
+  # Create Facebook credentials so user can login and claim account
   FacebookUserInfo.create!(
     user_id: user.id,
     facebook_user_id: fb_user['id'].to_i,
@@ -730,12 +723,11 @@ def dc_get_user(name)
 end
 
 def fb_username_to_dc(name)
-  # Create username from full name, only letters and numbers
+  # Discourse requirements on usernames
   username = name.to_ascii.tr('^A-Za-z0-9', '')
-
-  # Maximum length of a Discourse username is 15 characters
   username = username[0,19]
 
+  # Handle situations where two or more user have the same name
   while User.where('username = ?', username).exists?
     if username[-1] =~ /[[:digit:]]/
       digits = ""
@@ -785,7 +777,6 @@ def test_import_post_or_comment(fb_item)
   elsif fb_item['type'] == 'photo'
     image = fetch_image_or_load_from_disk(fb_item)
   end
-
   if image
     puts "  Image with size #{image.size}".green
     @image_count += 1
@@ -796,7 +787,6 @@ def test_import_post_or_comment(fb_item)
   if fb_item['likes'] or (fb_item['like_count'] and fb_item['like_count'] > 0)
     likes = fetch_likes_or_load_from_disk(fb_item)
   end
-
   unless likes.blank?
     puts "  Liked by #{likes.map { |l| l['name'] }.join(', ')}".green
     @like_count += likes.length
