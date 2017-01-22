@@ -106,7 +106,7 @@ task "import:facebook_group" => :environment do
 
   dc_backup_site_settings
   dc_set_temporary_site_settings
-  dc_category = dc_get_or_create_category(DC_CATEGORY_NAME, DC_ADMIN)
+  get_or_create_category
 
   begin
     import_posts
@@ -461,18 +461,6 @@ def create_comment(comment, topic_id, post_number=nil)
   fetch_comments_or_load_from_disk(comment, topic_id, post.post_number)
 end
 
-# Returns the Discourse category where imported Facebook posts will go
-def dc_get_or_create_category(name, owner)
-  if Category.where('name = ?', name).empty? then
-    puts "Creating category '#{name}'"
-    owner = User.where('username = ?', owner).first
-    category = Category.create!(name: name, user_id: owner.id)
-  else
-    puts "Category '#{name}' exists"
-    category = Category.where('name = ?', name).first
-  end
-end
-
 # Likes
 ################################################################################
 
@@ -613,19 +601,6 @@ def create_image(fb_item, file)
   puts "Uploaded image for post with Facebook ID #{fb_item['id']}".green
 end
 
-def create_directories_for_imported_data
-  base_directory    = "#{Rails.root}/facebook-data"
-  @import_directory = "#{base_directory}/#{GROUP_ID}"
-  directories = []
-  directories << base_directory
-  directories << @import_directory
-  directories << "#{@import_directory}/comments"
-  directories << "#{@import_directory}/likes"
-  directories << "#{@import_directory}/images"
-  directories << "#{@import_directory}/users"
-  directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
-end
-
 
 def get_discourse_user(fb_item)
   return unknown_user unless fb_item['from']
@@ -744,67 +719,12 @@ def create_user(fb_user)
   user
 end
 
-# Backup site settings
-def dc_backup_site_settings
-  @site_settings = {}
-  @site_settings['newuser_spam_host_threshold'] = SiteSetting.newuser_spam_host_threshold
-  @site_settings['max_new_accounts_per_registration_ip'] = SiteSetting.max_new_accounts_per_registration_ip
-  @site_settings['max_age_unmatched_ips'] = SiteSetting.max_age_unmatched_ips
-  @site_settings['disable_emails'] = SiteSetting.disable_emails
-end
-
-# Restore site settings
-def dc_restore_site_settings
-  SiteSetting.send("newuser_spam_host_threshold=", @site_settings['newuser_spam_host_threshold'])
-  SiteSetting.send("max_new_accounts_per_registration_ip=", @site_settings['max_new_accounts_per_registration_ip'])
-  SiteSetting.send("max_age_unmatched_ips=", @site_settings['max_age_unmatched_ips'])
-  SiteSetting.send("disable_emails=", @site_settings['disable_emails'])
-end
-
-# Set temporary site settings needed for this rake task
-def dc_set_temporary_site_settings
-  SiteSetting.send("newuser_spam_host_threshold=", 999)
-  SiteSetting.send("max_new_accounts_per_registration_ip=", 999)
-  SiteSetting.send("max_age_unmatched_ips=", 1)
-  SiteSetting.send("disable_emails=", true)
-end
-
-# Check if user exists
-# For some really weird reason this method returns the opposite value
-# So if it did find the user, the result is false
 def dc_user_exists(name)
   User.where('username = ?', name).exists?
 end
 
 def dc_get_user(name)
   User.where('username = ?', name).first
-end
-
-def total_run_time
-  total_seconds = Time.now - TIME_AT_START
-  seconds = total_seconds % 60
-  minutes = (total_seconds / 60) % 60
-  hours = total_seconds / (60 * 60)
-  format("%02d hours %02d minutes %02d seconds", hours, minutes, seconds)
-end
-
-def exit_report
-  unless @unfetched_posts.empty?
-    puts "\nThese Facebook objects could not be fetched from the API:".red
-    puts @unfetched_posts.inspect
-  end
-  unless @empty_posts.empty?
-    puts "\nNo contents was imported for these Facebook posts:".red
-    puts @empty_posts.inspect
-  end
-  puts "\nTotal run time: #{total_run_time}"
-  puts "\nImported #{@user_count} users, #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
-  unless (@latest_post_processed + 1) >= @total_num_posts
-    puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n"
-  end
-  if TEST_MODE
-    puts "\nNOTE: This was a test run, nothing has been imported to the Discourse database!\n".red
-  end
 end
 
 def fb_username_to_dc(name)
@@ -831,28 +751,6 @@ def fb_username_to_dc(name)
   return username
 end
 
-# Add colors to class String
-class String
-  def red
-    colorize(self, 31);
-  end
- 
-  def green
-    colorize(self, 32);
-  end
- 
-  def yellow
-    colorize(self, 33);
-  end
- 
-  def blue
-    colorize(self, 34);
-  end
- 
-  def colorize(text, color_code)
-    "\033[#{color_code}m#{text}\033[0m"
-  end
-end
 
 def test_import
   posts = fetch_posts_or_load_from_disk
@@ -910,5 +808,108 @@ def test_import_comments(fb_item)
     puts "  Comment by #{user['name']}: ".green + comment['message'].yellow
     test_import_post_or_comment comment
     @comment_count += 1
+  end
+end
+
+# Backup and restore settings
+################################################################################
+
+def dc_backup_site_settings
+  @site_settings = {}
+  @site_settings['newuser_spam_host_threshold'] = SiteSetting.newuser_spam_host_threshold
+  @site_settings['max_new_accounts_per_registration_ip'] = SiteSetting.max_new_accounts_per_registration_ip
+  @site_settings['max_age_unmatched_ips'] = SiteSetting.max_age_unmatched_ips
+  @site_settings['disable_emails'] = SiteSetting.disable_emails
+end
+
+def dc_restore_site_settings
+  SiteSetting.send("newuser_spam_host_threshold=", @site_settings['newuser_spam_host_threshold'])
+  SiteSetting.send("max_new_accounts_per_registration_ip=", @site_settings['max_new_accounts_per_registration_ip'])
+  SiteSetting.send("max_age_unmatched_ips=", @site_settings['max_age_unmatched_ips'])
+  SiteSetting.send("disable_emails=", @site_settings['disable_emails'])
+end
+
+def dc_set_temporary_site_settings
+  SiteSetting.send("newuser_spam_host_threshold=", 999)
+  SiteSetting.send("max_new_accounts_per_registration_ip=", 999)
+  SiteSetting.send("max_age_unmatched_ips=", 1)
+  SiteSetting.send("disable_emails=", true)
+end
+
+# Support Methods
+################################################################################
+
+def create_directories_for_imported_data
+  base_directory    = "#{Rails.root}/facebook-data"
+  @import_directory = "#{base_directory}/#{GROUP_ID}"
+  directories = []
+  directories << base_directory
+  directories << @import_directory
+  directories << "#{@import_directory}/comments"
+  directories << "#{@import_directory}/likes"
+  directories << "#{@import_directory}/images"
+  directories << "#{@import_directory}/users"
+  directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
+end
+
+def get_or_create_category
+  name = DC_CATEGORY_NAME
+  owner = DC_ADMIN
+  if Category.where('name = ?', name).empty? then
+    puts "Creating category '#{name}'"
+    owner = User.where('username = ?', owner).first
+    category = Category.create!(name: name, user_id: owner.id)
+  else
+    puts "Category '#{name}' exists"
+    category = Category.where('name = ?', name).first
+  end
+end
+
+def exit_report
+  unless @unfetched_posts.empty?
+    puts "\nThese Facebook objects could not be fetched from the API:".red
+    puts @unfetched_posts.inspect
+  end
+  unless @empty_posts.empty?
+    puts "\nNo contents was imported for these Facebook posts:".red
+    puts @empty_posts.inspect
+  end
+  puts "\nTotal run time: #{total_run_time}"
+  puts "\nImported #{@user_count} users, #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
+  unless (@latest_post_processed + 1) >= @total_num_posts
+    puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n"
+  end
+  if TEST_MODE
+    puts "\nNOTE: This was a test run, nothing has been imported to the Discourse database!\n".red
+  end
+end
+
+def total_run_time
+  total_seconds = Time.now - TIME_AT_START
+  seconds = total_seconds % 60
+  minutes = (total_seconds / 60) % 60
+  hours = total_seconds / (60 * 60)
+  format("%02d hours %02d minutes %02d seconds", hours, minutes, seconds)
+end
+
+class String
+  def red
+    colorize(self, 31);
+  end
+
+  def green
+    colorize(self, 32);
+  end
+
+  def yellow
+    colorize(self, 33);
+  end
+
+  def blue
+    colorize(self, 34);
+  end
+
+  def colorize(text, color_code)
+    "\033[#{color_code}m#{text}\033[0m"
   end
 end
