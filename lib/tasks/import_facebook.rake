@@ -552,7 +552,7 @@ def fetch_posts_or_load_from_disk
 end
 
 def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
-  fetch_comments(fb_item, topic_id, post_number) unless STORE_DATA_TO_FILES
+  return fetch_comments(fb_item, topic_id, post_number) unless STORE_DATA_TO_FILES
 
   filename = "#{@import_directory}/comments/#{fb_item['id']}.json"
   comments = nil
@@ -574,7 +574,7 @@ def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
 end
 
 def fetch_likes_or_load_from_disk(item)
-  fetch_likes(item) unless STORE_DATA_TO_FILES
+  return fetch_likes(item) unless STORE_DATA_TO_FILES
 
   fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
   filename  = "#{@import_directory}/likes/#{fb_id}.json"
@@ -597,7 +597,7 @@ def fetch_likes_or_load_from_disk(item)
 end
 
 def fetch_image_or_load_from_disk(fb_item)
-  fetch_image(fb_item) unless STORE_DATA_TO_FILES
+  return fetch_image(fb_item) unless STORE_DATA_TO_FILES
 
   filename = "#{@import_directory}/images/#{fb_item['id']}.jpg"
   file = nil
@@ -659,7 +659,7 @@ def unknown_user
 end
 
 def fetch_user_or_load_from_disk(fb_item)
-  fetch_user(fb_item) unless STORE_DATA_TO_FILES
+  return fetch_user(fb_item) unless STORE_DATA_TO_FILES
 
   user_id, user_name = fb_item['from']['id'], fb_item['from']['name']
   filename = "#{@import_directory}/users/#{user_id}.json"
