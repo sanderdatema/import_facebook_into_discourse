@@ -93,12 +93,8 @@ task "import:facebook_group" => :environment do
   # Collect IDs
   # group_id = fb_get_group_id(FB_GROUP_NAME)
 
-  @fb_posts ||= [] # Initialize if needed
   @user_count, @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0, 0
   @unfetched_posts, @empty_posts = [], []
-
-  # Fetch all facebook posts
-  fetch_posts_or_load_from_disk
 
   if TEST_MODE then
     begin
@@ -113,7 +109,7 @@ task "import:facebook_group" => :environment do
   dc_category = dc_get_or_create_category(DC_CATEGORY_NAME, DC_ADMIN)
 
   begin
-    fb_import_posts_into_dc
+    import_posts
     puts "\nDONE!".green
   ensure
     dc_restore_site_settings
@@ -193,82 +189,88 @@ def graph_generic_error(error, id, type=nil)
   exit
 end
 
-def fb_fetch_posts
+def fetch_posts
   puts "Fetching all Facebook posts... (this will take several minutes for large groups)"
   start_time = Time.now
-  @fb_posts = graph_connections(GROUP_ID, 'feed')
-  @fb_posts.reverse! if IMPORT_OLDEST_FIRST
-  puts "...fetched #{@fb_posts.length} posts in #{Time.now - start_time} seconds."
+  posts = graph_connections(GROUP_ID, 'feed')
+  posts.reverse! if IMPORT_OLDEST_FIRST
+  puts "...fetched #{posts.length} posts in #{Time.now - start_time} seconds."
+  posts
 end
 
-# Import Facebook posts into Discourse
-def fb_import_posts_into_dc
+def import_posts
+  posts = fetch_posts_or_load_from_disk
+  @total_num_posts = posts.length
+
   if RESTART_FROM_TOPIC_NUMBER > 0
-    puts "\nLast processed post was number #{RESTART_FROM_TOPIC_NUMBER} (FB: #{@fb_posts[RESTART_FROM_TOPIC_NUMBER]['id']}), continuing from there..."
+    puts "\nLast processed post was number #{RESTART_FROM_TOPIC_NUMBER} (FB: #{posts[RESTART_FROM_TOPIC_NUMBER]['id']}), continuing from there..."
   end
 
-  @fb_posts.each_with_index do |fb_post, num_posts_processed|
-    @latest_post_processed = num_posts_processed
-    next if num_posts_processed < RESTART_FROM_TOPIC_NUMBER
+  posts.each_with_index do |post, index|
+    @latest_post_processed = index
+    next if index < RESTART_FROM_TOPIC_NUMBER
 
-    post = fetch_dc_post_from_facebook_id fb_post['id']
+    create_post post
+  end
+end
 
-    if post
-      puts progress + "Already imported post #{post.id}".yellow + post_info(post)
-    else
-      dc_user = get_discourse_user fb_post
+def create_post(fb_post)
+  post = fetch_dc_post_from_facebook_id fb_post['id']
 
-      if fb_post['type'] == 'photo'
-        fetch_image_or_load_from_disk fb_post
-      end
+  if post
+    puts progress + "Already imported post #{post.id}".yellow + post_info(post)
+  else
+    dc_user = get_discourse_user fb_post
 
-      if fb_post['message'].nil?
-        if fb_post['story']
-          fb_post['message'] = fb_post['story']
-        else
-          fb_post['message'] = ""
-        end
-      end
-
-      @empty_posts << fb_post['id'] if fb_post['message'].strip.empty?
-
-      topic_title = generate_topic_title fb_post
-
-      # Check if this post has an attached link
-      if fb_post['link'] and fb_post['type'] != 'photo'
-        fb_post['message'] += "\n\n#{fb_post['link']}"
-      end
-
-      insert_user_tags fb_post
-
-      fb_post_time = fb_post['created_time'] || fb_post['updated_time']
-
-      post_creator = PostCreator.new(
-        dc_user,
-        skip_validations: true,
-        raw: fb_post['message'],
-        title: topic_title,
-        archetype: 'regular',
-        category: DC_CATEGORY_NAME,
-        created_at: Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s)))
-
-      post = post_creator.create
-
-      post.custom_fields['fb_id'] = fb_post['id']
-      post.save(validate: false)
-      post_serializer = PostSerializer.new(post, scope: true, root: false)
-      post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
-
-      @post_count += 1
-      puts progress + "Created topic by #{dc_user.name}: ".green + topic_title + post_info(post)
+    if fb_post['type'] == 'photo'
+      fetch_image_or_load_from_disk fb_post
     end
 
+    if fb_post['message'].nil?
+      if fb_post['story']
+        fb_post['message'] = fb_post['story']
+      else
+        fb_post['message'] = ""
+      end
+    end
 
-    topic_id = post.topic.id
+    @empty_posts << fb_post['id'] if fb_post['message'].strip.empty?
 
-    fetch_likes_or_load_from_disk(post) if post['likes']
-    fetch_comments_or_load_from_disk(fb_post, topic_id)
+    topic_title = generate_topic_title fb_post
+
+    # Check if this post has an attached link
+    if fb_post['link'] and fb_post['type'] != 'photo'
+      fb_post['message'] += "\n\n#{fb_post['link']}"
+    end
+
+    insert_user_tags fb_post
+
+    fb_post_time = fb_post['created_time'] || fb_post['updated_time']
+
+    post_creator = PostCreator.new(
+      dc_user,
+      skip_validations: true,
+      raw: fb_post['message'],
+      title: topic_title,
+      archetype: 'regular',
+      category: DC_CATEGORY_NAME,
+      created_at: Time.at(Time.parse(DateTime.iso8601(fb_post_time).to_s)))
+
+    post = post_creator.create
+
+    post.custom_fields['fb_id'] = fb_post['id']
+    post.save(validate: false)
+    post_serializer = PostSerializer.new(post, scope: true, root: false)
+    post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
+
+    @post_count += 1
+    puts progress + "Created topic by #{dc_user.name}: ".green + topic_title + post_info(post)
   end
+
+  topic_id = post.topic.id
+
+  fetch_likes_or_load_from_disk(post) if post['likes']
+  fetch_comments_or_load_from_disk(fb_post, topic_id)
 end
 
 def generate_topic_title(fb_post)
@@ -328,9 +330,9 @@ def topic_title_placeholder
 end
 
 def progress
-  num_posts_to_process = @fb_posts.length - RESTART_FROM_TOPIC_NUMBER
+  num_posts_to_process = @total_num_posts - RESTART_FROM_TOPIC_NUMBER
   percentage = (@post_count.to_f / num_posts_to_process * 100).round(1)
-  "\n[#{percentage}%] [#{@latest_post_processed} of #{@fb_posts.length}] ".blue
+  "\n[#{percentage}%] [#{@latest_post_processed} of #{@total_num_posts}] ".blue
 end
 
 def post_info(post)
@@ -338,7 +340,7 @@ def post_info(post)
   id, fb_id = post.id, post.custom_fields['fb_id']
   ids = "Post ID #{id} and Facebook ID #{fb_id}"
   " (Posted by #{post.user.name} at #{timestamp} with #{ids})".blue
-end 
+end
 
 def fetch_comments(fb_item, topic_id, post_number=nil)
   if fb_item['comments'] || (fb_item['comment_count'] && fb_item['comment_count'] > 0)
@@ -533,18 +535,20 @@ def create_directories_for_imported_data
 end
 
 def fetch_posts_or_load_from_disk
-  fb_fetch_posts unless STORE_DATA_TO_FILES
+  return fetch_posts unless STORE_DATA_TO_FILES
 
   filename  = "#{@import_directory}/#{GROUP_ID}.json"
 
   if File.exist?(filename)
-    @fb_posts = JSON.parse File.read(filename)
-    puts "Loaded #{@fb_posts.length} fetched Facebook posts from disk"
+    posts = JSON.parse File.read(filename)
+    puts "Loaded #{posts.length} fetched Facebook posts from disk"
   else
-    fb_fetch_posts
-    File.write filename, @fb_posts.to_json
-    puts "Saved #{@fb_posts.length} fetched Facebook posts to disk"
+    posts = fetch_posts
+    File.write filename, posts.to_json
+    puts "Saved #{posts.length} fetched Facebook posts to disk"
   end
+
+  posts
 end
 
 def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
@@ -784,7 +788,7 @@ def exit_report
   end
   puts "\nTotal run time: #{total_run_time}"
   puts "\nImported #{@user_count} users, #{@post_count} posts, #{@comment_count} comments, #{@like_count} likes and #{@image_count} images".green
-  unless (@latest_post_processed + 1) >= @fb_posts.length
+  unless (@latest_post_processed + 1) >= @total_num_posts
     puts "\nIndex of last topic processed: #{@latest_post_processed} (put this in config file to restart from where you were)\n"
   end
   if TEST_MODE
@@ -840,9 +844,9 @@ class String
 end
 
 def test_import
-  puts "\nTest mode! Will fetch and analyze but not save to database..."
+  posts = fetch_posts_or_load_from_disk
 
-  @fb_posts.each_with_index do |post, index|
+  posts.each_with_index do |post, index|
     next if index < RESTART_FROM_TOPIC_NUMBER
     unless post['message']
       post['message'] = ""
@@ -852,7 +856,7 @@ def test_import
     end
 
     user = get_discourse_user post
-    puts "\n[#{index + 1} of #{@fb_posts.length}] Post by #{user['name']}: ".green + generate_topic_title(post).yellow
+    puts "\n[#{index + 1} of #{posts.length}] Post by #{user['name']}: ".green + generate_topic_title(post).yellow
     test_import_post_or_comment post
     @post_count += 1
     @latest_post_processed = index
