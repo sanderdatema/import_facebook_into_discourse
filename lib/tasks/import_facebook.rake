@@ -367,12 +367,36 @@ def post_info(post)
   " (Posted by #{post.user.name} at #{timestamp} with #{ids})".blue
 end
 
+# Comments
+################################################################################
+
+def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
+  return fetch_comments(fb_item, topic_id, post_number) unless STORE_DATA_TO_FILES
+
+  filename = "#{@import_directory}/comments/#{fb_item['id']}.json"
+  comments = nil
+
+  if File.exist?(filename)
+    comments = JSON.parse File.read(filename)
+    puts "Loaded #{comments.length} comments for #{fb_item['id']} from disk"
+    comments.each do |comment|
+      create_comment(comment, topic_id, post_number) unless TEST_MODE
+    end
+  else
+    comments = fetch_comments(fb_item, topic_id, post_number)
+    return unless comments
+    File.write filename, comments.to_json
+    puts "Saved #{comments.length} fetched comments for #{fb_item['id']} to disk"
+  end
+
+  comments
+end
+
 def fetch_comments(fb_item, topic_id, post_number=nil)
   if fb_item['comments'] || (fb_item['comment_count'] && fb_item['comment_count'] > 0)
     comment_count = fb_item['comments'].length rescue fb_item['comment_count']
     puts "Fetching #{comment_count} comments for #{fb_item['id']}..."
   else
-    #puts "No comments found for #{fb_item['id']}, skipping..."
     return nil
   end
 
@@ -380,14 +404,13 @@ def fetch_comments(fb_item, topic_id, post_number=nil)
   comments = graph_connections(fb_item["id"], "comments", options)
 
   comments.each do |comment|
-    dc_create_comment(comment.dup, topic_id, post_number) unless TEST_MODE
+    create_comment(comment.dup, topic_id, post_number) unless TEST_MODE
   end
 
   comments
 end
 
-def dc_create_comment(comment, topic_id, post_number=nil)
-
+def create_comment(comment, topic_id, post_number=nil)
   post = get_post_from_facebook_id comment['id']
 
   unless post
@@ -552,28 +575,6 @@ def create_directories_for_imported_data
   directories << "#{@import_directory}/images"
   directories << "#{@import_directory}/users"
   directories.each { |d| Dir.mkdir(d) unless Dir.exist?(d) }
-end
-
-def fetch_comments_or_load_from_disk(fb_item, topic_id, post_number=nil)
-  return fetch_comments(fb_item, topic_id, post_number) unless STORE_DATA_TO_FILES
-
-  filename = "#{@import_directory}/comments/#{fb_item['id']}.json"
-  comments = nil
-
-  if File.exist?(filename)
-    comments = JSON.parse File.read(filename)
-    puts "Loaded #{comments.length} comments for #{fb_item['id']} from disk"
-    comments.each do |comment|
-      dc_create_comment(comment, topic_id, post_number) unless TEST_MODE
-    end
-  else
-    comments = fetch_comments(fb_item, topic_id, post_number)
-    return unless comments
-    File.write filename, comments.to_json
-    puts "Saved #{comments.length} fetched comments for #{fb_item['id']} to disk"
-  end
-
-  comments
 end
 
 def fetch_likes_or_load_from_disk(item)
