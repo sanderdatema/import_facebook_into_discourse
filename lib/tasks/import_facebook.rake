@@ -117,12 +117,15 @@ task "import:facebook_group" => :environment do
   end
 end
 
+# Interaction with Facebook Graph API
+################################################################################
 
-############################################################
-#### Methods
-############################################################
+def graph
+  initialize_connection unless @graph
+  sleep API_CALL_DELAY
+  @graph
+end
 
-# Connect to the Facebook Graph API
 def initialize_connection
   begin
     @graph = Koala::Facebook::API.new(FB_TOKEN)
@@ -131,12 +134,6 @@ def initialize_connection
     puts "\nERROR: Connection with Facebook failed\n#{e.message}".red
     exit
   end
-end
-
-def graph
-  initialize_connection unless @graph
-  sleep API_CALL_DELAY
-  @graph
 end
 
 def graph_connections(id, type, options={})
@@ -517,6 +514,9 @@ def create_like(liker, item)
   end
 end
 
+# User tags
+################################################################################
+
 def insert_user_tags(fb_item)
   return nil unless fb_item['message_tags']
 
@@ -601,6 +601,8 @@ def create_image(fb_item, file)
   puts "Uploaded image for post with Facebook ID #{fb_item['id']}".green
 end
 
+# Users
+################################################################################
 
 def get_discourse_user(fb_item)
   return unknown_user unless fb_item['from']
@@ -751,6 +753,8 @@ def fb_username_to_dc(name)
   return username
 end
 
+# Test import
+################################################################################
 
 def test_import
   posts = fetch_posts_or_load_from_disk
