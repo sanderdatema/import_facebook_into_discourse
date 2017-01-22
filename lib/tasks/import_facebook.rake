@@ -730,94 +730,25 @@ end
 # Backup site settings
 def dc_backup_site_settings
   @site_settings = {}
-  @site_settings['unique_posts_mins'] = SiteSetting.unique_posts_mins
-  @site_settings['rate_limit_create_topic'] = SiteSetting.rate_limit_create_topic
-  @site_settings['rate_limit_create_post'] = SiteSetting.rate_limit_create_post
-  @site_settings['max_topics_per_day'] = SiteSetting.max_topics_per_day
-  @site_settings['title_min_entropy'] = SiteSetting.title_min_entropy
-  @site_settings['body_min_entropy'] = SiteSetting.body_min_entropy
-  @site_settings['min_post_length'] = SiteSetting.min_post_length
-  @site_settings['min_topic_title_length'] = SiteSetting.min_topic_title_length
-  @site_settings['title_prettify'] = SiteSetting.title_prettify
-  @site_settings['allow_duplicate_topic_titles'] = SiteSetting.allow_duplicate_topic_titles
-  @site_settings['min_title_similar_length'] = SiteSetting.min_title_similar_length
-  @site_settings['min_body_similar_length'] = SiteSetting.min_body_similar_length
-  @site_settings['max_reply_history'] = SiteSetting.max_reply_history
-  @site_settings['newuser_max_replies_per_topic'] = SiteSetting.newuser_max_replies_per_topic
-  @site_settings['title_max_word_length'] = SiteSetting.title_max_word_length
-  @site_settings['newuser_max_links'] = SiteSetting.newuser_max_links
-  @site_settings['flag_sockpuppets'] = SiteSetting.flag_sockpuppets
   @site_settings['newuser_spam_host_threshold'] = SiteSetting.newuser_spam_host_threshold
   @site_settings['max_new_accounts_per_registration_ip'] = SiteSetting.max_new_accounts_per_registration_ip
   @site_settings['max_age_unmatched_ips'] = SiteSetting.max_age_unmatched_ips
-  @site_settings['rate_limit_new_user_create_topic'] = SiteSetting.rate_limit_new_user_create_topic
-  @site_settings['rate_limit_new_user_create_post'] = SiteSetting.rate_limit_new_user_create_post
-  @site_settings['max_topics_in_first_day'] = SiteSetting.max_topics_in_first_day
-  @site_settings['max_replies_in_first_day'] = SiteSetting.max_replies_in_first_day
-  @site_settings['sequential_replies_threshold'] = SiteSetting.sequential_replies_threshold
-  @site_settings['dominating_topic_minimum_percent'] = SiteSetting.dominating_topic_minimum_percent
   @site_settings['disable_emails'] = SiteSetting.disable_emails
 end
 
 # Restore site settings
 def dc_restore_site_settings
-  SiteSetting.send("unique_posts_mins=", @site_settings['unique_posts_mins'])
-  SiteSetting.send("rate_limit_create_topic=", @site_settings['rate_limit_create_topic'])
-  SiteSetting.send("rate_limit_create_post=", @site_settings['rate_limit_create_post'])
-  SiteSetting.send("max_topics_per_day=", @site_settings['max_topics_per_day'])
-  SiteSetting.send("title_min_entropy=", @site_settings['title_min_entropy'])
-  SiteSetting.send("body_min_entropy=", @site_settings['body_min_entropy'])
-  SiteSetting.send("min_post_length=", @site_settings['min_post_length'])
-  SiteSetting.send("min_topic_title_length=", @site_settings['min_topic_title_length'])
-  SiteSetting.send("title_prettify=", @site_settings['title_prettify'])
-  SiteSetting.send("allow_duplicate_topic_titles=", @site_settings['allow_duplicate_topic_titles'])
-  SiteSetting.send("min_title_similar_length=", @site_settings['min_title_similar_length'])
-  SiteSetting.send("min_body_similar_length=", @site_settings['min_body_similar_length'])
-  SiteSetting.send("max_reply_history=", @site_settings['max_reply_history'])
-  SiteSetting.send("newuser_max_replies_per_topic=", @site_settings['newuser_max_replies_per_topic'])
-  SiteSetting.send("title_max_word_length=", @site_settings['title_max_word_length'])
-  SiteSetting.send("newuser_max_links=", @site_settings['newuser_max_links'])
-  SiteSetting.send("flag_sockpuppets=", @site_settings['flag_sockpuppets'])
   SiteSetting.send("newuser_spam_host_threshold=", @site_settings['newuser_spam_host_threshold'])
   SiteSetting.send("max_new_accounts_per_registration_ip=", @site_settings['max_new_accounts_per_registration_ip'])
   SiteSetting.send("max_age_unmatched_ips=", @site_settings['max_age_unmatched_ips'])
-  SiteSetting.send("rate_limit_new_user_create_topic=", @site_settings['rate_limit_new_user_create_topic'])
-  SiteSetting.send("rate_limit_new_user_create_post=", @site_settings['rate_limit_new_user_create_post'])
-  SiteSetting.send("max_topics_in_first_day=", @site_settings['max_topics_in_first_day'])
-  SiteSetting.send("max_replies_in_first_day=", @site_settings['max_replies_in_first_day'])
-  SiteSetting.send("sequential_replies_threshold=", @site_settings['sequential_replies_threshold'])
-  SiteSetting.send("dominating_topic_minimum_percent=", @site_settings['dominating_topic_minimum_percent'])
   SiteSetting.send("disable_emails=", @site_settings['disable_emails'])
 end
 
 # Set temporary site settings needed for this rake task
 def dc_set_temporary_site_settings
-  SiteSetting.send("unique_posts_mins=", 0)
-  SiteSetting.send("rate_limit_create_topic=", 0)
-  SiteSetting.send("rate_limit_create_post=", 0)
-  SiteSetting.send("max_topics_per_day=", 10000)
-  SiteSetting.send("title_min_entropy=", 1)
-  SiteSetting.send("body_min_entropy=", 1)
-  SiteSetting.send("min_post_length=", 2)
-  SiteSetting.send("min_topic_title_length=", 3)
-  SiteSetting.send("title_prettify=", false)
-  SiteSetting.send("allow_duplicate_topic_titles=", true)
-  SiteSetting.send("min_title_similar_length=", 50)
-  SiteSetting.send("min_body_similar_length=", 90)
-  SiteSetting.send("max_reply_history=", 999)
-  SiteSetting.send("newuser_max_replies_per_topic=", 999)
-  SiteSetting.send("title_max_word_length=", 300)
-  SiteSetting.send("newuser_max_links=", 200)
-  SiteSetting.send("flag_sockpuppets=", false)
   SiteSetting.send("newuser_spam_host_threshold=", 999)
   SiteSetting.send("max_new_accounts_per_registration_ip=", 999)
   SiteSetting.send("max_age_unmatched_ips=", 1)
-  SiteSetting.send("rate_limit_new_user_create_topic=", 0)
-  SiteSetting.send("rate_limit_new_user_create_post=", 0)
-  SiteSetting.send("max_topics_in_first_day=", 999)
-  SiteSetting.send("max_replies_in_first_day=", 999)
-  SiteSetting.send("sequential_replies_threshold=", 999)
-  SiteSetting.send("dominating_topic_minimum_percent=", 99)
   SiteSetting.send("disable_emails=", true)
 end
 
