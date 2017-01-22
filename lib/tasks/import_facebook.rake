@@ -758,6 +758,7 @@ end
 
 def test_import
   posts = fetch_posts_or_load_from_disk
+  @total_num_posts = posts.length
 
   posts.each_with_index do |post, index|
     next if index < RESTART_FROM_TOPIC_NUMBER
