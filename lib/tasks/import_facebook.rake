@@ -143,6 +143,7 @@ def graph_connections(id, type, options={})
     graph_authentication_error
   rescue Koala::Facebook::ClientError => error
     graph_client_error(id, error)
+    return []
   rescue => error
     graph_generic_error(error, id, type)
   end
@@ -482,7 +483,7 @@ def fetch_likes(item)
   fb_id = TEST_MODE ? item['id'] : item.custom_fields['fb_id']
 
   likes = graph_connections(fb_id, 'likes')
-  return nil if likes.blank?
+  return nil unless likes
 
   if likes.length > 0
     likes.each do |like|
