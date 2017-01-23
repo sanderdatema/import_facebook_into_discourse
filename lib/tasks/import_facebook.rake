@@ -2,52 +2,10 @@
 #### IMPORT FACEBOOK GROUP INTO DISCOURSE
 ####
 #### created by Sander Datema (info@sanderdatema.nl)
-####   changed by Vannilla Sky (vannillasky@tlen.pl
+####   changed by Vannilla Sky (vannillasky@tlen.pl)
+####   rewritten by Martin Eriksson (martin@bubb.la)
 ####
-#### version 1.7 (06/02/2015)
-############################################################
- 
-############################################################
-#### Description
-############################################################
-#
-# This rake task will import all posts and comments of a
-# Facebook group into Discourse.
-#
-# - It will preserve post and comment dates
-# - It will not import likes
-# - It will create new user accounts for each imported user
-#   using username@localhost as email address and the full
-#   name of each user converted to lower case, no spaces as
-#   username
-# - It will use the first 50 characters of the post as title
-#   for the topic
- 
-############################################################
-#### Prerequisits
-############################################################
-#
-# - A Facebook Graph API token. get it here:
-#   https://developers.facebook.com/tools/explorer
-#   Select user_groups and read_stream as permission
-# - Add this to your Gemfile:
-#   gem 'koala', require: false
-# - Edit the configuration file config/import_facebook.yml
- 
-############################################################
-#### Changelog
-############################################################
-#
-# v. 1.7 (fork from author)
-# New:
-# - importing only post and messages not imported previously
-# Fixed:
-# - FB usernames with national chars import
-# - short post/comments import
-# - FB users/posts/comments fetching
-#
-############################################################
-#### The Rake Task
+#### version 2.0 (2017-01-22)
 ############################################################
 
 require 'koala'
