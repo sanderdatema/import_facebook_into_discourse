@@ -78,7 +78,7 @@ task "import:facebook_group" => :environment do
   puts "*** Importing in reverse order (oldest posts first)".yellow if IMPORT_OLDEST_FIRST
   puts "*** Delaying each API call #{API_CALL_DELAY} seconds to avoid rate limiting".yellow if API_CALL_DELAY > 0
 
-  unless dc_user_exists(DC_ADMIN) then
+  unless dc_user_exists(DC_ADMIN)
     puts "\nERROR: The admin user #{DC_ADMIN} does not exist".red
     exit
   end
@@ -90,7 +90,7 @@ task "import:facebook_group" => :environment do
   @user_count, @post_count, @comment_count, @like_count, @image_count = 0, 0, 0, 0, 0
   @unfetched_posts, @empty_posts = [], []
 
-  if TEST_MODE then
+  if TEST_MODE
     begin
       test_import
     ensure
@@ -101,13 +101,13 @@ task "import:facebook_group" => :environment do
   get_or_create_category
 
   email_setting = SiteSetting.disable_emails
-  SiteSetting.send("disable_emails=", true)
+  SiteSetting.disable_emails = true
 
   begin
     import_posts
     puts "\nDONE!".green
   ensure
-    SiteSetting.send("disable_emails=", email_setting)
+    SiteSetting.disable_emails = email_setting
     exit_report
   end
 end
@@ -327,7 +327,7 @@ def generate_topic_title(fb_post)
   end
 
   # Remove new lines and replace with a space
-  topic_title = topic_title.gsub( /\n/m, " " )
+  topic_title = topic_title.gsub(/\n/m, " ")
 
   # Fix all-caps titles
   if topic_title == topic_title.upcase
@@ -447,7 +447,7 @@ def create_comment(comment, topic_id, post_number=nil)
   end
 
   if comment['like_count'] && comment['like_count'] > 0
-    fetch_likes_or_load_from_disk(post)
+    fetch_likes_or_load_from_disk post
   end
 
   fetch_comments_or_load_from_disk(comment, topic_id, post.post_number)
@@ -638,7 +638,7 @@ def unknown_user
 
   return user_data if TEST_MODE
 
-  create_user(user_data)
+  create_user user_data
 end
 
 def fetch_user_or_load_from_disk(fb_item)
@@ -794,7 +794,7 @@ def test_import_post_or_comment(fb_item)
     @like_count += likes.length
   end
 
-  test_import_comments(fb_item)
+  test_import_comments fb_item
 end
 
 def test_import_comments(fb_item)
@@ -828,7 +828,7 @@ end
 def get_or_create_category
   name = DC_CATEGORY_NAME
   owner = DC_ADMIN
-  if Category.where('name = ?', name).empty? then
+  if Category.where('name = ?', name).empty?
     puts "Creating category '#{name}'"
     owner = User.where('username = ?', owner).first
     category = Category.create!(name: name, user_id: owner.id)
@@ -867,19 +867,19 @@ end
 
 class String
   def red
-    colorize(self, 31);
+    colorize(self, 31)
   end
 
   def green
-    colorize(self, 32);
+    colorize(self, 32)
   end
 
   def yellow
-    colorize(self, 33);
+    colorize(self, 33)
   end
 
   def blue
-    colorize(self, 34);
+    colorize(self, 34)
   end
 
   def colorize(text, color_code)
