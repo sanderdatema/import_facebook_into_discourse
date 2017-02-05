@@ -86,7 +86,7 @@ Here is how to generate an App Access Token:
 
 * Create a Facebook App at https://developers.facebook.com
 
-* Under App Review, click Add Items and select `user_managed_groups`
+* Under App Review, click Start a Submission (newly created apps) or Add Items (previously existing apps) and select `user_managed_groups`
 
 * Save changes to the App
 

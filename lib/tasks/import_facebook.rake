@@ -111,7 +111,7 @@ end
 
 def graph_object(id)
   begin
-    @graph.get_object(id)
+    graph.get_object(id)
   rescue Koala::Facebook::AuthenticationError
     graph_authentication_error
   rescue Koala::Facebook::ClientError => error
