@@ -1,3 +1,6 @@
+# Note
+I haven't updated this script in ages. And since I don't need it right now, I hope someone will fork it and get it up to speed with current versions of Discourse.
+
 # Import Facebook groups to Discourse
 
 This rake task exports data from Facebook groups and imports them to Discourse, including posts, comments, likes, images, user accounts and user tags.
